@@ -14,6 +14,7 @@ class EventsCog(commands.Cog):
         if(ctx.guild.id in self.GuildCalDict.keys()):
             print("new event command")
             await self.GuildCalDict[ctx.guild.id].HandleNewEventCommand(ctx, arg)
+            print("done with new event")
 
     @commands.command(pass_context=True)
     async def samtest(self, ctx):

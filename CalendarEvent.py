@@ -39,7 +39,7 @@ class CalendarEvent():
 			return self.CachedEmbed
 		result = discord.Embed(title = self.Title, description = self.Description, url = self.CreationMessage.jump_url)
 		result.add_field(name=_fieldHost, value = self.Host.mention)
-		result.add_field(name=_fieldStartTime, value = self.StartDateTime.strftime("%A, %B %d at %I %p"))
+		result.add_field(name=_fieldStartTime, value = self.StartDateTime.strftime("%A, %B %d at %I:%M %p").replace(" 0", " ")) #gross python. GROSS.
 		result.add_field(name=_fieldLinks, value= f"[{_subFieldCal}]({self.GCalendarLink})")
 		result.add_field(name=f"{_fieldRSVP} ({len(self.RSVPList)})", value = self.GetRSVPList(), inline=False)
 		self.CachedEmbed = result
@@ -93,10 +93,15 @@ class CalendarEvent():
 		return result
 	
 	def GetSummaryString(self, includeDate = True):
-		eventTitle = f"[{self.Title}]({self.EventMessage.jump_url}) at "
-		eventTime = self.StartDateTime.strftime("%I %p")
+		eventTitle = f"[{self.Title}]({self.EventMessage.jump_url}) "
 		if(includeDate):
-			eventTime = self.StartDateTime.strftime("%A, %B %d at %I %p")
+			eventTitle += "on "
+		else:
+			eventTitle += "at "
+
+		eventTime = self.StartDateTime.strftime("%I:%M %p").replace(" 0", " ")
+		if(includeDate):
+			eventTime = self.StartDateTime.strftime("%A, %B %d at %I:%M %p").replace(" 0", " ")
 		return eventTitle + eventTime
 			
 

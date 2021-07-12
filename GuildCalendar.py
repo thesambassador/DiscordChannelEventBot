@@ -2,6 +2,7 @@ from hashlib import new
 from GoogleCalendarHelper import GoogleCalendarHelper
 from discord import message
 from CalendarEvent import *
+import asyncio
 import discord
 import bisect
 from datetime import datetime
@@ -19,6 +20,15 @@ class GuildCalendar():
 
 		self.SummaryMessage = None
 		self.GCalHelper = GoogleCalendarHelper()
+
+		self.TaskQueue = asyncio.Queue()
+		asyncio.create_task(self.EventChangeWorker(self.TaskQueue))
+
+	async def EventChangeWorker(self, taskQueue : asyncio.Queue):
+		while True:
+			task = await taskQueue.get()
+			await task()
+			taskQueue.task_done()
 
 	async def LoadCalendarFromEventsChannel(self):
 		print(f"finding events channel for guild {self.Guild.name}")
@@ -47,10 +57,17 @@ class GuildCalendar():
 		await self.UpdateSummary()
 
 	async def HandleNewEventCommand(self, ctx, args):
+		#lambda arguments don't get formed until they execute, so creating local vars in lambda scope is necessary
+		self.TaskQueue.put_nowait(lambda ctx=ctx, args=args: self.NewEventCommand(ctx,args) ) 
+
+	async def NewEventCommand(self, ctx, args):
 		newEvent : CalendarEvent = await CreateEventFromCommand(self, ctx, args)
 		await self.AddEvent(newEvent, True)
 
 	async def HandleMessageEdit(self, payload):
+		self.TaskQueue.put_nowait(lambda payload=payload: self.MessageEdit(payload))
+
+	async def MessageEdit(self, payload):
 		if(payload.message_id in self.EventsDict):
 			print("editted message tied to event, editing...")
 			chan = self.Guild.get_channel(payload.channel_id)
@@ -70,6 +87,9 @@ class GuildCalendar():
 				await calEvent.EventMessage.edit(embed=calEvent.CreateEmbed())
 
 	async def HandleMessageDelete(self, payload):
+		self.TaskQueue.put_nowait(lambda payload=payload: self.MessageDelete(payload))
+
+	async def MessageDelete(self, payload):
 		if(payload.message_id in self.EventsDict):
 			print("deleted message tied to event, deleting...")
 			calEvent = self.EventsDict[payload.message_id]

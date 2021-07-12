@@ -1,6 +1,7 @@
 from __future__ import print_function
 import datetime
 import os.path
+import os
 import base64
 import urllib.parse
 from googleapiclient.discovery import build
@@ -33,7 +34,8 @@ class GoogleCalendarHelper():
                 token.write(creds.to_json())
 
         self.service = build('calendar', 'v3', credentials=creds)
-        self.calendarID = 'e1kss3jrc04t08ef8gkgk9sjc0@group.calendar.google.com'
+        self.calendarID = os.getenv('GOOGLE_CALENDAR_ID')
+        self.timeZone = os.getenv('GOOGLE_CALENDAR_TIMEZONE', 'America/Chicago')
 
     def CreateEvent(self, eventName, eventDescription, startTime, endTime=None):
         
