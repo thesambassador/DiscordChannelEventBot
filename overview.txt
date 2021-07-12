@@ -1,0 +1,99 @@
+!!! need to figure out datetime parsing if links are present?
+
+Add events from any channel with !event command
+	Allow strict formatting (event title @ event time - event description) 
+		allow extra flags to designate an event as requiring early rsvps or events that are a long time away from today's date?
+	Allow loose formatting (tries to parse date/time from message, title is "event", and description is just the stuff after !event
+	
+	
+Actual event posts in #events channel
+	Bottom of channel has 2 sections:
+		Events today - shows a list of event (titles) today with time, should link to the full event message
+		New events - events that were created today (regardless of start time)
+		Upcoming big events? - shows events flagged as "big" events (like camping that was said in a month or something?)
+	rest of channel has events sorted in order of occurance
+
+Edit events by editing the original message
+Delete events by deleting the original message (or maybe add a trash can react that the owner can use?)
+Remind RSVPed people by the host reacting to the event?
+	send dm to all rsvped?
+
+All event creation/editing/deletion are synced with google calendar?
+
+top level bots/client has:
+	list/dict of calendars, one calendar per guild
+	pass updates for each guild to their specific calendar
+	
+server/guild calendar objects have:
+	containing guild
+	event list/dict?
+	methods for adding/updating/deleting events
+
+event objects have:
+	properties:
+		containing calendar
+		title
+		time
+		description
+		event host
+		event message object (the actual event text-message object in the events channel)
+		creation message object (the original message that created the event)
+		rsvp users
+		has event text channel been created?
+		events channel link?
+		
+	methods:
+		constructor for initializing from command message
+		constructor for initializing from embed
+
+Create task that runs every x time (30 minutes?)
+	see if an event is coming up and remind users?
+	archive any events that are more than 24 hours after their start time
+	
+
+Discord bot/client eventreactions
+on start:
+	check all guilds, for each guild:
+		scan events channel and initialize event dictionary
+		verify events original posts (in case messages that an event is linked to gets deleted?)
+
+on new event command:
+	see if it's a "loose" syntax event or "strict" syntax:
+		if loose:
+			title is set to "Event"
+			time is parsed from message
+			description is just the message after the !event command
+		if strict (!event event title - event time - event description)
+			title is text before the first -
+			time is parsed from the text between the 1st - and the 2nd -
+			description is pulled from after the 2nd -
+	create event object
+	post event embed and reorganize events?
+
+on edit message
+	see if editted message is linked to an event
+		if yes, update event
+on delete message
+	see if deleted message is linked to an event
+		if yes, delete event
+on react added:
+	see if reaction is to an event
+		if yes, check to see the type of reaction:
+			an RSVP reaction
+				if yes, add to events rsvp list
+					if events text channel created, add user to events channel access
+			a create-text-channel reaction:
+				if yes, create a new text channel, add it to the appropriate category, and add all RSVPed users to the channel. maybe @mention all added users?
+			a remind-users reaction:
+				DM all RSVPed users a reminder about the event, remove reaction afterwards?
+on react removed:
+	see if reaction was to an event
+		if yes, check the type of reaction:
+			a RSVP reaction:
+				if yes, remove from events rsvp list
+					if events text channel created, remove user from events channel access
+			a create-text-channel reaction:
+				if yes, delete text channel? or DM user to make sure they want to delete it?
+			
+			
+			
