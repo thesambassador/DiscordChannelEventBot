@@ -3,11 +3,14 @@ from discord.ext.commands.context import Context
 from GuildCalendar import CreateCalendarForGuild
 from discord.ext import commands
 from discord.ext.commands.core import command
+from discord.ext import tasks
 
 class EventsCog(commands.Cog):
     def __init__(self, bot) :
         self.bot = bot
         self.GuildCalDict = {}
+        self.ArchiveOld.start()
+
 
     @commands.command(pass_context=True)
     async def event(self, ctx, *, arg):
@@ -32,6 +35,11 @@ class EventsCog(commands.Cog):
     # @event.error
     # async def event_error(self, ctx, error):
     #     print("event command failed")
+
+    @commands.command(pass_context = True)
+    async def forcearchive(self, ctx : Context):
+        if(ctx.guild.id in self.GuildCalDict.keys()):
+            await self.GuildCalDict[ctx.guild.id].HandleArchiveOld()
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -62,6 +70,17 @@ class EventsCog(commands.Cog):
         if(payload.guild_id in self.GuildCalDict.keys()):
             await self.GuildCalDict[payload.guild_id].HandleReactAdd(payload)
             
+    @tasks.loop(minutes=30)
+    async def ArchiveOld(self):
+        for guildID, guildCal in self.GuildCalDict.items():
+            await guildCal.HandleArchiveOld()
+
+
+    @ArchiveOld.before_loop
+    async def BeforeArchiveOld(self):
+        await self.bot.wait_until_ready()
+
+    
 
 def setup(bot):
     bot.add_cog(EventsCog(bot))

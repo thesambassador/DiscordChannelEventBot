@@ -5,7 +5,10 @@ from CalendarEvent import *
 import asyncio
 import discord
 import bisect
+import sys
+import traceback
 from datetime import datetime
+from datetime import timedelta
 
 class GuildCalendar():
 	Emoji_Yes = '\u2705'
@@ -15,8 +18,11 @@ class GuildCalendar():
 		self.Guild = guild
 		self.EventsDict = {} #for easily looking up events by the creation message id
 		self.EventsList = [] #all events sorted by event start date
+		self.ArchivedEventsList = []
 		self.NumLastEventsToTrack = 3 #how many events to show in the "newly created events" area
-		self.LastEventsCreated = [] #last NumLastEventsToTrack events that have been created
+
+		self.EventsChannel = None
+		self.ArchiveChannel = None
 
 		self.SummaryMessage = None
 		self.GCalHelper = GoogleCalendarHelper()
@@ -27,14 +33,23 @@ class GuildCalendar():
 	async def EventChangeWorker(self, taskQueue : asyncio.Queue):
 		while True:
 			task = await taskQueue.get()
-			await task()
+			try:
+				await task()
+			except: #catch all exceptions in here so that they don't make the worker break?
+				traceback.print_exc()
 			taskQueue.task_done()
 
 	async def LoadCalendarFromEventsChannel(self):
+		eventChannelName = "events" #todo: change this to a config value
+		archiveChannelName = "eventarchive"
+
 		print(f"finding events channel for guild {self.Guild.name}")
-		self.EventsChannel = next((x for x in self.Guild.channels if x.name == "events"))
+		self.EventsChannel = next((x for x in self.Guild.channels if x.name == eventChannelName))
 		print(f'got events channel {self.EventsChannel.name}, getting messages')
 		messages = await self.EventsChannel.history(limit=200).flatten()
+
+		print(f"finding archive channel for guild {self.Guild.name}")
+		self.ArchiveChannel = next((x for x in self.Guild.channels if x.name == archiveChannelName))
 
 		toRemove = []
 
@@ -176,7 +191,7 @@ class GuildCalendar():
 		if(numTodayEvents == 0):
 			eventsTodayString = "No events today"
 		
-		summaryEmbed.add_field(name="Today", value = eventsTodayString, inline = False)
+		summaryEmbed.add_field(name="Events Today", value = eventsTodayString, inline = False)
 
 		#newly added events
 		if(len(self.EventsList) < numNewEvents):
@@ -212,6 +227,43 @@ class GuildCalendar():
 		await eventMessage.add_reaction(self.Emoji_Yes)
 		await eventMessage.add_reaction(self.Emoji_No)
 		
+	async def HandleArchiveOld(self):
+		self.TaskQueue.put_nowait(lambda: self.ArchiveOld())
+
+	async def ArchiveOld(self):
+		oldnessBuffer = 8 #amount of hours that the event stays in the event channel even after it's started
+		print("Starting archiving...")
+		now = datetime.now()
+		oldnessBufferDelta = timedelta(hours=oldnessBuffer)
+		toArchive = []
+
+		for event in self.EventsList:
+			if(event.StartDateTime + oldnessBufferDelta < now):
+				toArchive.append(event)
+
+		numArchived = len(toArchive)
+		print(f"found {numArchived} events need to be archived")
+
+		for oldEvent in toArchive:
+			#post the event in the archive channel
+			archiveMessage = await self.ArchiveChannel.send(embed = oldEvent.CreateEmbed())
+
+			#delete the event in the events channel
+			await oldEvent.EventMessage.delete()
+
+			oldEvent.EventMessage = archiveMessage
+			oldEvent.IsArchived = True
+
+			self.EventsList.remove(oldEvent)
+			self.EventsDict.pop(oldEvent.CreationMessage.id)
+
+			self.ArchivedEventsList.append(oldEvent)
+
+		#have it update the summary
+		if(numArchived > 0):
+			self.UpdateSummary()
+
+		print("Done archiving")
 	
 	def IsSummaryMessage(message):
 		sumString = "Events Summary"

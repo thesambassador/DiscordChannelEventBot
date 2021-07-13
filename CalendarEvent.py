@@ -46,7 +46,7 @@ class CalendarEvent():
 		return result
 	
 	async def UpdateMessage(self, msgString):
-		noCommandMessage = msgString[7:]
+		noCommandMessage = msgString[7:] #remove the command part of the message (the !event part)
 		
 		#determine if this is follows the strict syntax or if it's "loose"
 		splitCommand = noCommandMessage.split("|")
@@ -185,6 +185,7 @@ async def CreateEventFromCommand(calendar, ctx, commandText):
 		result.Title = "Event"
 		result.Description = commandText
 
+	await result.AddRSVP(ctx.author)
 	return result
 
 async def GetUserFromMention(mention, guild):
