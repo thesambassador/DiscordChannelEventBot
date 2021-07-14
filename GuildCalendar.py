@@ -13,6 +13,9 @@ from datetime import timedelta
 class GuildCalendar():
 	Emoji_Yes = '\u2705'
 	Emoji_No = '\u274C'
+	Emoji_Maybe = '\u2754'
+	Emoji_TextChannel = '\u2328'
+
 
 	def __init__(self, guild) -> None:
 		self.Guild = guild
@@ -23,6 +26,7 @@ class GuildCalendar():
 
 		self.EventsChannel = None
 		self.ArchiveChannel = None
+		self.EventCategoryChannel = None
 
 		self.SummaryMessage = None
 		self.GCalHelper = GoogleCalendarHelper()
@@ -42,6 +46,7 @@ class GuildCalendar():
 	async def LoadCalendarFromEventsChannel(self):
 		eventChannelName = "events" #todo: change this to a config value
 		archiveChannelName = "eventarchive"
+		eventCategoryName = "event-channels"
 
 		print(f"finding events channel for guild {self.Guild.name}")
 		self.EventsChannel = next((x for x in self.Guild.channels if x.name == eventChannelName))
@@ -50,6 +55,9 @@ class GuildCalendar():
 
 		print(f"finding archive channel for guild {self.Guild.name}")
 		self.ArchiveChannel = next((x for x in self.Guild.channels if x.name == archiveChannelName))
+
+		print("finding the event channel category")
+		self.EventCategoryChannel = next((x for x in self.Guild.categories if x.name == eventCategoryName))
 
 		toRemove = []
 
@@ -127,6 +135,18 @@ class GuildCalendar():
 				await reactedEvent.RemoveRSVP(user)
 				await reactedEvent.EventMessage.remove_reaction(self.Emoji_No, user)
 
+			elif(str(payload.emoji) == self.Emoji_Maybe):
+				await reactedEvent.AddRSVP(user, True)
+				await reactedEvent.EventMessage.remove_reaction(self.Emoji_Maybe, user)
+
+			elif(str(payload.emoji) == self.Emoji_TextChannel):
+				if(user.id == reactedEvent.Host.id):
+					await reactedEvent.CreateChannelForEvent(self.EventCategoryChannel)
+				else:
+					pass #only the host can trigger this?
+
+				await(reactedEvent.EventMessage.remove_reaction(self.Emoji_TextChannel, user))
+
 
 	async def DeleteEvent(self, event : CalendarEvent):
 		await event.EventMessage.delete()
@@ -136,6 +156,7 @@ class GuildCalendar():
 		#delete google calendar thing
 		if(event.GCalendarData != None):
 			self.GCalHelper.DeleteEvent(event.GCalendarData['id'])
+		await event.DeleteTextChannel()
 		
 		await self.UpdateSummary()
 
@@ -225,7 +246,9 @@ class GuildCalendar():
 
 	async def AddReactions(self, eventMessage):
 		await eventMessage.add_reaction(self.Emoji_Yes)
+		await eventMessage.add_reaction(self.Emoji_Maybe)
 		await eventMessage.add_reaction(self.Emoji_No)
+		await eventMessage.add_reaction(self.Emoji_TextChannel)
 		
 	async def HandleArchiveOld(self):
 		self.TaskQueue.put_nowait(lambda: self.ArchiveOld())
@@ -250,6 +273,7 @@ class GuildCalendar():
 
 			#delete the event in the events channel
 			await oldEvent.EventMessage.delete()
+			await oldEvent.DeleteTextChannel()
 
 			oldEvent.EventMessage = archiveMessage
 			oldEvent.IsArchived = True
@@ -261,7 +285,7 @@ class GuildCalendar():
 
 		#have it update the summary
 		if(numArchived > 0):
-			self.UpdateSummary()
+			await self.UpdateSummary()
 
 		print("Done archiving")
 	

@@ -1,3 +1,7 @@
+from logging import NullHandler
+from os import name
+from discord.channel import CategoryChannel, TextChannel
+from discord.permissions import PermissionOverwrite
 from GoogleCalendarHelper import GoogleCalendarHelper
 import datetime
 import discord
@@ -11,7 +15,9 @@ _fieldHost = "Host"
 _fieldStartTime = "Start Time"
 _fieldLinks = "Links"
 _fieldRSVP = "RSVPs"
+_fieldMaybes = "Maybes"
 _subFieldCal = "Calendar"
+_subFieldChannel = "Channel"
 
 class CalendarEvent():
 
@@ -28,21 +34,28 @@ class CalendarEvent():
 		self.GCalendarData = None
 
 		self.RSVPList = []
-		self.CachedEmbed = None
+		self.MaybeList = []
 
+		self.TextChannel = None
 		
 	def __lt__(self, other):
 		return self.StartDateTime.__gt__(other.StartDateTime) #probably should just use lt and reverse
 
 	def CreateEmbed(self) -> Embed:
-		if(self.CachedEmbed != None):
-			return self.CachedEmbed
 		result = discord.Embed(title = self.Title, description = self.Description, url = self.CreationMessage.jump_url)
 		result.add_field(name=_fieldHost, value = self.Host.mention)
 		result.add_field(name=_fieldStartTime, value = self.StartDateTime.strftime("%A, %B %d at %I:%M %p").replace(" 0", " ")) #gross python. GROSS.
-		result.add_field(name=_fieldLinks, value= f"[{_subFieldCal}]({self.GCalendarLink})")
-		result.add_field(name=f"{_fieldRSVP} ({len(self.RSVPList)})", value = self.GetRSVPList(), inline=False)
-		self.CachedEmbed = result
+
+		#for links, we're gonna be crazy and allow multiple...
+		linksText = f"[{_subFieldCal}]({self.GCalendarLink})\n"
+		if(self.TextChannel != None):
+			textChannelLink = GetLinkToChannel(self.TextChannel)
+			linksText += f"[{_subFieldChannel}]({textChannelLink})"
+
+		result.add_field(name=_fieldLinks, value = linksText)
+		result.add_field(name=f"{_fieldRSVP} ({len(self.RSVPList)})", value = self.GetMentionList(self.RSVPList), inline=True)
+		result.add_field(name=f"{_fieldMaybes} ({len(self.MaybeList)})", value = self.GetMentionList(self.MaybeList), inline=True)
+
 		return result
 	
 	async def UpdateMessage(self, msgString):
@@ -64,32 +77,107 @@ class CalendarEvent():
 			self.Description = noCommandMessage
 
 		if(self.EventMessage != None):
-			self.CachedEmbed = None
 			await self.EventMessage.edit(embed=self.CreateEmbed())
 
-	async def AddRSVP(self, user):
-		print(self.RSVPList)
-		if(user not in self.RSVPList):
-			print("adding")
-			self.RSVPList.append(user)
+	async def CreateChannelForEvent(self, channelCategory : CategoryChannel):
+		if(self.TextChannel == None):
+			#figure out a name for the channel, use the event title up to 3 words
+			maxWords = 3
+			splitWords = self.Title.split()
+			firstXWords = splitWords[:min(len(splitWords), 3)]
+			firstXWords.insert(0, "event")
+			possibleTitle = '-'.join(firstXWords)
+			possibleTitle = possibleTitle.lower()
+
+			#see if that channel name already exists (if yes figure out a new name)
+			num = 1
+			candidate = possibleTitle
+			while(any(x.name == candidate for x in channelCategory.channels)):
+				candidate = possibleTitle + str(num)
+				num += 1
+			possibleTitle = candidate
+			print(f"trying to create channel with {possibleTitle}")
+
+			#create the channel with overrides for all rsvped people
+			overwrites = {}
+			overwrites[channelCategory.guild.default_role] = discord.PermissionOverwrite(read_messages=False)
+			for user in self.RSVPList:
+				overwrites[user] = discord.PermissionOverwrite(read_messages=True)
+
+			channel = await channelCategory.create_text_channel(possibleTitle, overwrites=overwrites)
+			self.TextChannel = channel
+
+			#post a message in the channel that @mentions all rsvped people
+			channelEmbed = self.CreateEmbed()
+			await channel.send(embed=channelEmbed)
+			channelMessage = "This is a TEMPORARY channel to discuss the above event. This channel will be deleted when the event is archived or deleted. Only people who have RSVPed to the event can see this channel. "
+			rsvpMentions = [channelMessage]
+			for rsvp in self.RSVPList:
+				rsvpMentions.append(rsvp.mention)
+			
+			messageToSend = " ".join(rsvpMentions)
+
+			await channel.send(messageToSend)
+
+			#add channel link to the event embed in the links section
+			await self.UpdateEmbed()
+
+			pass
+		else:
+			pass #channel already exists
+		pass
+
+	async def AddRSVP(self, user, isMaybe=False):
+		toUse = self.RSVPList
+		if(isMaybe):
+			toUse = self.MaybeList
+			#if they're switching to a maybe but are in the rsvp list, remove them
+			if(user in self.RSVPList):
+				self.RSVPList.remove(user)
+		else:
+			#if they're switching to RSVP but in the maybe list, remove them
+			if(user in self.MaybeList):
+				self.MaybeList.remove(user)
+
+		if(user not in toUse):
+			#print("adding")
+			toUse.append(user)
+			if(self.TextChannel != None):
+				await self.TextChannel.set_permissions(user, overwrite = PermissionOverwrite(read_messages=True))
 			await self.UpdateEmbed()
 		
 
 	async def RemoveRSVP(self, user):
+		removed = False
 		if(user in self.RSVPList):
 			self.RSVPList.remove(user)
+			removed = True
+		
+		if(user in self.MaybeList):
+			self.MaybeList.remove(user)
+			removed = True
+
+		if(removed):
+			if(self.TextChannel != None):
+				await self.TextChannel.set_permissions(user, overwrite=None) #clears permissions on the channel
 			await self.UpdateEmbed()
 
 	async def UpdateEmbed(self):
 		if(self.EventMessage != None):
-			self.CachedEmbed = None
 			await self.EventMessage.edit(embed=self.CreateEmbed())
 
-	def GetRSVPList(self):
-		if(len(self.RSVPList)==0):
+	async def DeleteTextChannel(self):
+		if(self.TextChannel != None):
+			await self.TextChannel.delete()
+			self.TextChannel = None
+
+
+
+	def GetMentionList(self, targetList):
+		if(len(targetList)==0):
 			return "None"
-		result = "".join([(x.mention + ",") for x in self.RSVPList])
-		print("RSVPS: " + result)
+		result = " ".join([(x.mention) for x in targetList])
+		#print("RSVPS: " + result)
 		return result
 	
 	def GetSummaryString(self, includeDate = True):
@@ -112,8 +200,6 @@ async def CreateEventFromMessage(calendar, message) -> CalendarEvent:
 	result = CalendarEvent()
 
 	result.CalendarRef = calendar
-	result.CachedEmbed = eventEmbed
-	result.HasTextChannel = False #TODO: text channel nonsense
 	result.TextChannel = None
 
 	result.Title = eventEmbed.title
@@ -139,20 +225,32 @@ async def CreateEventFromMessage(calendar, message) -> CalendarEvent:
 				print("invalid date, couldn't read")
 				result.StartDateTime = datetime.datetime.now
 		elif(field.name[:len(_fieldRSVP)] == _fieldRSVP):
-			rsvpMentions = field.value.split(',')
+			rsvpMentions = field.value.split(' ')
 			for rsvp in rsvpMentions:
 				userForRSVP = await GetUserFromMention(rsvp, calendar.Guild)
 				if(userForRSVP != None):
 					result.RSVPList.append(userForRSVP)
-		elif(field.name == _fieldLinks):
-			link = field.value[len(_subFieldCal)+3:-1]
-			if(len(link) > 10): #10 is arbitrary idk
-				print("link found, is:")
-				print(link)
-				eventID = GoogleCalendarHelper.GetEventIDFromLink(link)
-				result.GCalendarData = calendar.GCalHelper.GetEvent(eventID)
-				result.GCalendarLink = result.GCalendarData["htmlLink"]
 
+		elif(field.name[:len(_fieldMaybes)] == _fieldMaybes):
+			maybeMentions = field.value.split(' ')
+			for maybe in maybeMentions:
+				userForMaybe = await GetUserFromMention(maybe, calendar.Guild)
+				if(userForMaybe != None):
+					result.MaybeList.append(userForMaybe)
+
+		elif(field.name == _fieldLinks):
+			textLinks = GetTextLinks(field.value)
+			for textLink in textLinks:
+				linkTitle = textLink[0]
+				link = textLink[1]
+				print(f"{linkTitle} link found, is {link}")
+				if(linkTitle==_subFieldCal):
+					eventID = GoogleCalendarHelper.GetEventIDFromLink(link)
+					result.GCalendarData = calendar.GCalHelper.GetEvent(eventID)
+					result.GCalendarLink = result.GCalendarData["htmlLink"]
+				elif(linkTitle==_subFieldChannel):
+					result.TextChannel = GetChannelFromURL(link, calendar.Guild)
+					pass
 
 	return result
 
@@ -161,9 +259,6 @@ async def CreateEventFromCommand(calendar, ctx, commandText):
 	result = CalendarEvent()
 
 	result.CalendarRef = calendar #ref to containing calendar
-	result.CachedEmbed = None
-	result.HasTextChannel = False
-	result.TextChannel = None
 	result.EventMessage = None
 
 	result.CreationMessage = ctx.message #message that created the event
@@ -212,3 +307,31 @@ async def GetMessageFromURL(url, guild):
 
 	except ValueError:
 		return 0
+
+def GetChannelFromURL(url, guild):
+	vals = url.split("/")
+	try:
+		channelID = int(vals[5])
+
+		channel = guild.get_channel(channelID)
+
+		return channel
+
+	except ValueError:
+		return 0
+
+
+def GetTextLinks(input : str):
+	result = []
+	lines = input.split('\n')
+	for line in lines:
+		link = line[line.find("(")+1:line.find(")")]
+		text = line[line.find("[")+1:line.find("]")]
+		linkText = (text, link)
+		result.append(linkText)
+	return result
+
+def GetLinkToChannel(channel : TextChannel):
+	guildID = channel.guild.id
+	channelID = channel.id
+	return f"https://discord.com/channels/{guildID}/{channelID}/"

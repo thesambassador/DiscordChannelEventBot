@@ -69,6 +69,8 @@ class EventsCog(commands.Cog):
 
         if(payload.guild_id in self.GuildCalDict.keys()):
             await self.GuildCalDict[payload.guild_id].HandleReactAdd(payload)
+        
+        print(str(payload.emoji))
             
     @tasks.loop(minutes=30)
     async def ArchiveOld(self):
