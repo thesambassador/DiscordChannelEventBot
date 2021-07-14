@@ -106,7 +106,6 @@ class GuildCalendar():
 				await self.AddEvent(calEvent, True)
 
 			if(calEvent.EventMessage != None):
-				calEvent.CachedEmbed = None
 				await calEvent.EventMessage.edit(embed=calEvent.CreateEmbed())
 
 	async def HandleMessageDelete(self, payload):
@@ -193,7 +192,7 @@ class GuildCalendar():
 
 
 
-	async def UpdateSummary(self, numTodayEvents = 10, numNewEvents = 3):
+	async def UpdateSummary(self, numTodayEvents = 10, numWeekEvents = 10, numNewEvents = 3):
 		summaryEmbed = discord.Embed(title = "Events Summary")
 		
 		#events happening today
@@ -213,6 +212,18 @@ class GuildCalendar():
 			eventsTodayString = "No events today"
 		
 		summaryEmbed.add_field(name="Events Today", value = eventsTodayString, inline = False)
+
+		#events this week
+		weekEventsMessage = "No events this week"
+		thisWeekEvents = [x for x in self.EventsList 
+						if x.StartDateTime.date() <= (datetime.today().date() + timedelta(days=7)) and
+						x.StartDateTime.date() >= (datetime.today().date() + timedelta(days=1))]
+		thisWeekEvents.sort(key=lambda x: x.StartDateTime, reverse=False)
+		if(len(thisWeekEvents) > 0):
+			thisWeekEventStrings = [x.GetSummaryString(True) for x in thisWeekEvents]
+			weekEventsMessage = "\n".join(thisWeekEventStrings)
+		summaryEmbed.add_field(name="Events later this week", value=weekEventsMessage)
+			
 
 		#newly added events
 		if(len(self.EventsList) < numNewEvents):

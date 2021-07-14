@@ -276,8 +276,9 @@ async def CreateEventFromCommand(calendar, ctx, commandText):
 
 	#loose definition
 	else:
-		result.StartDateTime = parse(commandText, fuzzy=True)
-		result.Title = "Event"
+		parseResult = parse(commandText, fuzzy_with_tokens=True)
+		result.StartDateTime = parseResult[0]
+		result.Title = parseResult[1][0]
 		result.Description = commandText
 
 	await result.AddRSVP(ctx.author)
