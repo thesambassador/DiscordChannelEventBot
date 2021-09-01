@@ -153,3 +153,4 @@ testDecorator.py
 test.py
 sa_file.json
 *.zip
+*.jar
