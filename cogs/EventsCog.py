@@ -1,5 +1,6 @@
 from discord.embeds import Embed
 from discord.ext.commands.context import Context
+from discord.threads import Thread
 from GuildCalendar import CreateCalendarForGuild
 from discord.ext import commands
 from discord.ext.commands.core import command
@@ -71,7 +72,24 @@ class EventsCog(commands.Cog):
             await self.GuildCalDict[payload.guild_id].HandleReactAdd(payload)
         
         print(str(payload.emoji))
-            
+    
+    @commands.Cog.listener()
+    async def on_thread_join(self, thread:Thread):
+        if(thread.guild.id in self.GuildCalDict.keys()):
+            await self.GuildCalDict[thread.guild.id].HandleThreadJoined(thread)
+
+    @commands.Cog.listener()
+    async def on_thread_delete(self, thread:Thread):
+        if(thread.guild.id in self.GuildCalDict.keys()):
+            await self.GuildCalDict[thread.guild.id].HandleThreadDeleted(thread)
+
+    @commands.Cog.listener()
+    async def on_thread_update(self, before:Thread, after:Thread):
+        if(before.guild.id in self.GuildCalDict.keys()):
+            if(not before.archived and after.archived):
+                print("thread archived")
+        pass
+
     @tasks.loop(minutes=30)
     async def ArchiveOld(self):
         for guildID, guildCal in self.GuildCalDict.items():

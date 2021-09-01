@@ -2,6 +2,7 @@ from logging import NullHandler
 from os import name
 from discord.channel import CategoryChannel, TextChannel
 from discord.permissions import PermissionOverwrite
+from discord.threads import Thread
 from GoogleCalendarHelper import GoogleCalendarHelper
 import datetime
 import discord
@@ -29,14 +30,15 @@ class CalendarEvent():
 
 		self.CalendarRef = None
 		self.CreationMessage = None
-		self.EventMessage = None
+		self.EventMessage : discord.Message = None
 		self.GCalendarLink = None
 		self.GCalendarData = None
 
 		self.RSVPList = []
 		self.MaybeList = []
 
-		self.TextChannel = None
+		self.EventThread : discord.Thread = None
+		self.Thread = None
 		
 	def __lt__(self, other):
 		return self.StartDateTime.__gt__(other.StartDateTime) #probably should just use lt and reverse
@@ -48,8 +50,8 @@ class CalendarEvent():
 
 		#for links, we're gonna be crazy and allow multiple...
 		linksText = f"[{_subFieldCal}]({self.GCalendarLink})\n"
-		if(self.TextChannel != None):
-			textChannelLink = GetLinkToChannel(self.TextChannel)
+		if(self.EventThread != None):
+			textChannelLink = GetLinkToChannel(self.EventThread)
 			linksText += f"[{_subFieldChannel}]({textChannelLink})"
 
 		result.add_field(name=_fieldLinks, value = linksText)
@@ -79,53 +81,27 @@ class CalendarEvent():
 		if(self.EventMessage != None):
 			await self.EventMessage.edit(embed=self.CreateEmbed())
 
-	async def CreateChannelForEvent(self, channelCategory : CategoryChannel):
-		if(self.TextChannel == None):
-			#figure out a name for the channel, use the event title up to 3 words
+	async def CreateThreadForEvent(self, channelCategory : CategoryChannel):
+		if(self.EventThread == None):
+			
+			#figure out a name for the thread, use the event title up to 3 words (joined with -)
 			maxWords = 3
 			splitWords = self.Title.split()
 			firstXWords = splitWords[:min(len(splitWords), 3)]
-			firstXWords.insert(0, "event")
 			possibleTitle = '-'.join(firstXWords)
 			possibleTitle = possibleTitle.lower()
 
-			#see if that channel name already exists (if yes figure out a new name)
-			num = 1
-			candidate = possibleTitle
-			while(any(x.name == candidate for x in channelCategory.channels)):
-				candidate = possibleTitle + str(num)
-				num += 1
-			possibleTitle = candidate
-			print(f"trying to create channel with {possibleTitle}")
+			#create the thread
+			self.EventThread = await self.EventMessage.create_thread(name=possibleTitle)
 
-			#create the channel with overrides for all rsvped people
-			overwrites = {}
-			overwrites[channelCategory.guild.default_role] = discord.PermissionOverwrite(read_messages=False)
-			for user in self.RSVPList:
-				overwrites[user] = discord.PermissionOverwrite(read_messages=True)
-
-			channel = await channelCategory.create_text_channel(possibleTitle, overwrites=overwrites)
-			self.TextChannel = channel
-
-			#post a message in the channel that @mentions all rsvped people
-			channelEmbed = self.CreateEmbed()
-			await channel.send(embed=channelEmbed)
-			channelMessage = "This is a TEMPORARY channel to discuss the above event. This channel will be deleted when the event is archived or deleted. Only people who have RSVPed to the event can see this channel. "
-			rsvpMentions = [channelMessage]
+			#add all rsvped people to the thread
 			for rsvp in self.RSVPList:
-				rsvpMentions.append(rsvp.mention)
-			
-			messageToSend = " ".join(rsvpMentions)
-
-			await channel.send(messageToSend)
-
-			#add channel link to the event embed in the links section
-			await self.UpdateEmbed()
-
-			pass
+				await self.EventThread.add_user(rsvp)
+			for maybe in self.MaybeList:
+				await self.EventThread.add_user(rsvp)
 		else:
-			pass #channel already exists
-		pass
+			pass #thread already exists
+		
 
 	async def AddRSVP(self, user, isMaybe=False):
 		toUse = self.RSVPList
@@ -142,8 +118,8 @@ class CalendarEvent():
 		if(user not in toUse):
 			#print("adding")
 			toUse.append(user)
-			if(self.TextChannel != None):
-				await self.TextChannel.set_permissions(user, overwrite = PermissionOverwrite(read_messages=True))
+			if(self.EventThread != None):
+				await self.EventThread.set_permissions(user, overwrite = PermissionOverwrite(read_messages=True))
 			await self.UpdateEmbed()
 		
 
@@ -158,8 +134,8 @@ class CalendarEvent():
 			removed = True
 
 		if(removed):
-			if(self.TextChannel != None):
-				await self.TextChannel.set_permissions(user, overwrite=None) #clears permissions on the channel
+			if(self.EventThread != None):
+				await self.EventThread.set_permissions(user, overwrite=None) #clears permissions on the channel
 			await self.UpdateEmbed()
 
 	async def UpdateEmbed(self):
@@ -167,9 +143,9 @@ class CalendarEvent():
 			await self.EventMessage.edit(embed=self.CreateEmbed())
 
 	async def DeleteTextChannel(self):
-		if(self.TextChannel != None):
-			await self.TextChannel.delete()
-			self.TextChannel = None
+		if(self.EventThread != None):
+			await self.EventThread.delete()
+			self.EventThread = None
 
 
 
@@ -185,9 +161,11 @@ class CalendarEvent():
 		if(includeDate):
 			eventTitle += "on "
 		else:
-			eventTitle += "at "
+			#no space here to correctly strip out leading zeros
+			eventTitle += "at"
 
-		eventTime = self.StartDateTime.strftime("%I:%M %p").replace(" 0", " ")
+		#have space before %I so that we can correctly strip out leading 0s
+		eventTime = self.StartDateTime.strftime(" %I:%M %p").replace(" 0", " ")
 		if(includeDate):
 			eventTime = self.StartDateTime.strftime("%A, %B %d at %I:%M %p").replace(" 0", " ")
 		return eventTitle + eventTime
@@ -200,7 +178,7 @@ async def CreateEventFromMessage(calendar, message) -> CalendarEvent:
 	result = CalendarEvent()
 
 	result.CalendarRef = calendar
-	result.TextChannel = None
+	result.EventThread = None
 
 	result.Title = eventEmbed.title
 	result.Description = eventEmbed.description
@@ -249,7 +227,7 @@ async def CreateEventFromMessage(calendar, message) -> CalendarEvent:
 					result.GCalendarData = calendar.GCalHelper.GetEvent(eventID)
 					result.GCalendarLink = result.GCalendarData["htmlLink"]
 				elif(linkTitle==_subFieldChannel):
-					result.TextChannel = GetChannelFromURL(link, calendar.Guild)
+					result.EventThread = GetChannelFromURL(link, calendar.Guild)
 					pass
 
 	return result

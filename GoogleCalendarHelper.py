@@ -8,6 +8,7 @@ from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from oauth2client import service_account
 from oauthlib.oauth2.rfc6749.clients import base
 
 # If modifying these scopes, delete the file token.json.
@@ -16,19 +17,25 @@ SCOPES = ['https://www.googleapis.com/auth/calendar']
 class GoogleCalendarHelper():
     def __init__(self) -> None:
         creds = None
+        saFile = 'sa_file.json'
         # The file token.json stores the user's access and refresh tokens, and is
         # created automatically when the authorization flow completes for the first
         # time.
         if os.path.exists('token.json'):
             creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+            
         # If there are no (valid) credentials available, let the user log in.
         if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json', SCOPES)
-                creds = flow.run_local_server(port=0)
+            print("getting credentials from service file")
+            creds = service_account.ServiceAccountCredentials.from_json_keyfile_name(saFile, SCOPES)
+            print("gotem?")
+
+            # if creds and creds.expired and creds.refresh_token:
+            #     creds.refresh(Request())
+            # else:
+            #     flow = InstalledAppFlow.from_client_secrets_file(
+            #         'credentials.json', SCOPES)
+            #     creds = flow.run_local_server(port=0)
             # Save the credentials for the next run
             with open('token.json', 'w') as token:
                 token.write(creds.to_json())

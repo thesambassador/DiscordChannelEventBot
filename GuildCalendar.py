@@ -1,4 +1,7 @@
 from hashlib import new
+
+from dateutil.parser import ParserError
+from discord.threads import Thread
 from GoogleCalendarHelper import GoogleCalendarHelper
 from discord import message
 from CalendarEvent import *
@@ -84,8 +87,49 @@ class GuildCalendar():
 		self.TaskQueue.put_nowait(lambda ctx=ctx, args=args: self.NewEventCommand(ctx,args) ) 
 
 	async def NewEventCommand(self, ctx, args):
-		newEvent : CalendarEvent = await CreateEventFromCommand(self, ctx, args)
-		await self.AddEvent(newEvent, True)
+		print("new event!")
+		errorMessage = ""
+		#try to create the new event from the command
+		try:
+			newEvent : CalendarEvent = await CreateEventFromCommand(self, ctx, args)
+			print(newEvent.StartDateTime)
+			if(newEvent.StartDateTime < datetime.now()):
+				print("date is in past")
+				await self.PostResponseMessage(newEvent, 3)
+			else:
+				#if we were successful in parsing the command into an event, post it to the events channel
+				await self.AddEvent(newEvent, True)
+				await self.PostResponseMessage(newEvent)
+
+		except ParserError:
+			nullEvent = CalendarEvent()
+			nullEvent.CreationMessage = ctx.message
+			await self.PostResponseMessage(nullEvent, 2)
+		
+		# except:
+		# 	nullEvent = CalendarEvent()
+		# 	nullEvent.CreationMessage = ctx.message
+		# 	await self.PostResponseMessage(nullEvent, 1)
+
+	async def PostResponseMessage(self, calEvent : CalendarEvent, errorCode = 0):
+		createMessage : discord.Message = calEvent.CreationMessage
+		createChannel : TextChannel = createMessage.channel
+		#no error
+		if(errorCode == 0):
+			responseMessage = f"[Successfully created your event, click here to see it in the events channel]({calEvent.EventMessage.jump_url})"
+			responseEmbed = discord.Embed(description = responseMessage)
+			await createChannel.send(embed=responseEmbed, reference=createMessage, delete_after=120)
+
+		elif(errorCode == 1):
+			errorMessage = "Something went wrong when parsing your message, try again?"
+			await createChannel.send(content=errorMessage, reference=createMessage, delete_after=120)
+		elif(errorCode == 2):
+			errorMessage = "Couldn't determine a date for your event, make sure that your event has a date and time in it"
+			await createChannel.send(content=errorMessage, reference=createMessage, delete_after=120)
+		elif(errorCode == 3):
+			dateString = calEvent.StartDateTime.strftime("%A, %B %d at %I:%M %p").replace(" 0", " ")
+			errorMessage = f"Looks like your selected date, {dateString}, might be in the past? Unfortunately, nobody on this server can time travel, try again"
+			await createChannel.send(content=errorMessage, reference=createMessage, delete_after=120)
 
 	async def HandleMessageEdit(self, payload):
 		self.TaskQueue.put_nowait(lambda payload=payload: self.MessageEdit(payload))
@@ -140,7 +184,7 @@ class GuildCalendar():
 
 			elif(str(payload.emoji) == self.Emoji_TextChannel):
 				if(user.id == reactedEvent.Host.id):
-					await reactedEvent.CreateChannelForEvent(self.EventCategoryChannel)
+					await reactedEvent.CreateThreadForEvent(self.EventCategoryChannel)
 				else:
 					pass #only the host can trigger this?
 
@@ -159,7 +203,10 @@ class GuildCalendar():
 		
 		await self.UpdateSummary()
 
-	async def AddEvent(self, newEvent : CalendarEvent, shouldPost):
+	#Adds a CalendarEvent to the events list and dict. 
+	# If shouldPost is true, it also creates a google calendar entry for it,
+	#posts the event to the events channel, and updates the events summary
+	async def AddEvent(self, newEvent : CalendarEvent, shouldPost, reorderEvents = False):
 		#add to the events list sorted, and the events dictionary
 		index = bisect.bisect(self.EventsList, newEvent)
 		self.EventsList.insert(index, newEvent)
@@ -173,81 +220,119 @@ class GuildCalendar():
 		if(shouldPost):
 			newEvent.GCalendarData = self.GCalHelper.CreateEvent(newEvent.Title, newEvent.Description, newEvent.StartDateTime)
 			newEvent.GCalendarLink = newEvent.GCalendarData['htmlLink']
-
-			#add a new message for the last event in the list (might be a duplicate for now)
-			lastEmbed = self.EventsList[-1].CreateEmbed()
-			newMessage = await self.EventsChannel.send(embed=lastEmbed)
-			await self.AddReactions(newMessage)
-
-			#slide down any events happening sooner
-			forwardEventMessage = self.EventsList[-1].EventMessage #
-			for i in range(len(self.EventsList) - 2, index-1, -1):
-				await forwardEventMessage.edit(embed=self.EventsList[i].CreateEmbed())
-				saveCurrent = self.EventsList[i].EventMessage
-				self.EventsList[i].EventMessage = forwardEventMessage
-				forwardEventMessage = saveCurrent
 			
-			self.EventsList[-1].EventMessage = newMessage
+			#if we want to reorder the events page to be in order of date, we do so here
+			#going to not do this any more though since we can't move threads between messages, and the summary should be enough to keep track of stuff
+			if(reorderEvents):
+				#add a new message for the last event in the list (might be a duplicate for now)
+				lastEmbed = self.EventsList[-1].CreateEmbed()
+				newMessage = await self.EventsChannel.send(embed=lastEmbed)
+				await self.AddReactions(newMessage)
+
+				#slide down any events happening sooner
+				forwardEventMessage = self.EventsList[-1].EventMessage #
+				for i in range(len(self.EventsList) - 2, index-1, -1):
+					await forwardEventMessage.edit(embed=self.EventsList[i].CreateEmbed())
+					saveCurrent = self.EventsList[i].EventMessage
+					self.EventsList[i].EventMessage = forwardEventMessage
+					forwardEventMessage = saveCurrent
+			
+				self.EventsList[-1].EventMessage = newMessage
+			else:
+				newEmbed = newEvent.CreateEmbed()
+				newMessage = await self.EventsChannel.send(embed=newEmbed)
+				await self.AddReactions(newMessage)
+				newEvent.EventMessage = newMessage
+
 			await(self.UpdateSummary())
 
+		
 
-
+	#note that embed fields seem to have a limit of 1024 characters per field
+	#whole embed might have an overall character limit of 6000
 	async def UpdateSummary(self, numTodayEvents = 10, numWeekEvents = 10, numNewEvents = 3):
-		summaryEmbed = discord.Embed(title = "Events Summary")
+		summaryEmbeds = []
 		
 		#events happening today
 		eventsTodayString = ""
 		todayEvents = [x for x in self.EventsList if x.StartDateTime.date() == datetime.today().date()]
 		todayEvents.sort(key=lambda x: x.StartDateTime, reverse=False)
 		print(f"found {len(todayEvents)} today")
-		if(len(todayEvents) < numTodayEvents):
-			numTodayEvents = len(todayEvents)
 
-		for i in range(numTodayEvents):
-			eventString = todayEvents[i].GetSummaryString(False) + "\n"
-			#print(eventString)
-			eventsTodayString += eventString
-
-		if(numTodayEvents == 0):
-			eventsTodayString = "No events today"
-		
-		summaryEmbed.add_field(name="Events Today", value = eventsTodayString, inline = False)
+		todayEmbed = self.CreateSummaryEmbedFromList(todayEvents, "Events Today", numTodayEvents, "No events today", False)
+		summaryEmbeds.append(todayEmbed)
 
 		#events this week
-		weekEventsMessage = "No events this week"
 		thisWeekEvents = [x for x in self.EventsList 
 						if x.StartDateTime.date() <= (datetime.today().date() + timedelta(days=7)) and
 						x.StartDateTime.date() >= (datetime.today().date() + timedelta(days=1))]
 		thisWeekEvents.sort(key=lambda x: x.StartDateTime, reverse=False)
-		if(len(thisWeekEvents) > 0):
-			thisWeekEventStrings = [x.GetSummaryString(True) for x in thisWeekEvents]
-			weekEventsMessage = "\n".join(thisWeekEventStrings)
-		summaryEmbed.add_field(name="Events later this week", value=weekEventsMessage)
-			
+		
+		thisWeekEmbed = self.CreateSummaryEmbedFromList(thisWeekEvents, "Events This Week", numWeekEvents, "No events later this week")
+		summaryEmbeds.append(thisWeekEmbed)
 
 		#newly added events
-		if(len(self.EventsList) < numNewEvents):
-			numNewEvents = len(self.EventsList)
-
-		print(len(self.EventsList))
-		newEvents = ""
 		eventsByCreateDate = sorted(self.EventsList, key=lambda x: x.CreationMessage.created_at)
 		eventsByCreateDate.reverse()
-		for i in range(numNewEvents):
-			eventString = eventsByCreateDate[i].GetSummaryString() + "\n"
-			#print(eventString)
-			newEvents += eventString	
+		
+		newlyAddedEmbed = self.CreateSummaryEmbedFromList(eventsByCreateDate, "Newly Created Events", numNewEvents, "No events added so far")
+		summaryEmbeds.append(newlyAddedEmbed)
 
-		if(len(eventsByCreateDate) == 0):
-			newEvents = "None"
+		#add event usage FAQ link
+		usageEmbed = discord.Embed()
+		description = "[Click here to find out how to use this channel!](https://github.com/thesambassador/DiscordChannelEventBot/wiki/User-Usage)\n"
+		description += "Problems or suggestions? Message <@116783246599127044>"
+		usageEmbed.description = description
+		
 
-		summaryEmbed.add_field(name = "Newly added", value = newEvents, inline=False)
+		summaryEmbeds.append(usageEmbed)
 
+		#delete the existing summary set if it exists
 		if(self.SummaryMessage != None):
 			await self.SummaryMessage.delete()
-
-		self.SummaryMessage = await self.EventsChannel.send(embed=summaryEmbed)
+			self.SummaryMessage = None
 		
+		#post the new one with the embed sets
+		self.SummaryMessage = await self.EventsChannel.send(embeds=summaryEmbeds)
+
+	#embeds can be a max of 6000 characters including title and probably other stuff...
+	#probably should handle that at some point just in case but not now TODO
+	#since we're limiting number of events per "section" this should be OK?
+	def CreateSummaryEmbedFromList(self, eventList, embedTitle, numEvents, zeroLengthString, includeDate = True):
+		maxEmbedDescriptionLength = 5800
+
+		if(numEvents > len(eventList)):
+			numEvents = len(eventList)
+
+		summaryEmbed = discord.Embed(title = embedTitle)
+
+		if(numEvents == 0):
+			summaryEmbed.description = zeroLengthString
+		else:
+			summaryStrings = []
+			for i in range(numEvents):
+				summaryStrings.append(eventList[i].GetSummaryString(includeDate))
+
+			summaryString = '\n'.join(summaryStrings)
+
+			summaryEmbed.description = summaryString
+		
+		return summaryEmbed
+	
+	#called both when the bot joins a thread AND when the thread is created!
+	async def HandleThreadJoined(self, thread:Thread):
+		self.TaskQueue.put_nowait(lambda thread=thread: self.ThreadJoined(thread))
+
+	async def ThreadJoined(self, thread:Thread):
+		print("thread joined")
+		pass
+
+	#threads probably generally won't be deleted but... ya know
+	async def HandleThreadDeleted(self, thread:Thread):
+		self.TaskQueue.put_nowait(lambda thread=thread: self.ThreadDeleted(thread))	
+
+	async def ThreadDeleted(self, thread:Thread):
+		pass
 	
 	def GetEventFromEventMessage(self, messageID):
 		for event in self.EventsList:
@@ -301,14 +386,14 @@ class GuildCalendar():
 		print("Done archiving")
 	
 	def IsSummaryMessage(message):
-		sumString = "Events Summary"
+		sumString = "Events Today"
 		#should have an embed
-		if(not len(message.embeds) == 1):
+		if(not len(message.embeds) == 4):
 			return False
 		
 		if(message.embeds[0].title != sumString):
 			return False
-
+		print("found summary string")
 		return True
 
 	#figure out if the message fits the format for an "event" message
@@ -324,6 +409,7 @@ class GuildCalendar():
 				return False
 
 		return True
+
 
 async def CreateCalendarForGuild(guild) -> GuildCalendar:
 	print(f"Reading calendar for {guild.name}")
