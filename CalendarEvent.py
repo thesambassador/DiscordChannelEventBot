@@ -1,5 +1,6 @@
 from logging import NullHandler
 from os import name
+from discord import channel
 from discord.channel import CategoryChannel, TextChannel
 from discord.permissions import PermissionOverwrite
 from discord.threads import Thread
@@ -81,7 +82,7 @@ class CalendarEvent():
 		if(self.EventMessage != None):
 			await self.EventMessage.edit(embed=self.CreateEmbed())
 
-	async def CreateThreadForEvent(self, channelCategory : CategoryChannel):
+	async def CreateThreadForEvent(self):
 		if(self.EventThread == None):
 			
 			#figure out a name for the thread, use the event title up to 3 words (joined with -)
@@ -98,7 +99,7 @@ class CalendarEvent():
 			for rsvp in self.RSVPList:
 				await self.EventThread.add_user(rsvp)
 			for maybe in self.MaybeList:
-				await self.EventThread.add_user(rsvp)
+				await self.EventThread.add_user(maybe)
 		else:
 			pass #thread already exists
 		
@@ -119,7 +120,7 @@ class CalendarEvent():
 			#print("adding")
 			toUse.append(user)
 			if(self.EventThread != None):
-				await self.EventThread.set_permissions(user, overwrite = PermissionOverwrite(read_messages=True))
+				await self.EventThread.add_user(user)
 			await self.UpdateEmbed()
 		
 
@@ -135,7 +136,7 @@ class CalendarEvent():
 
 		if(removed):
 			if(self.EventThread != None):
-				await self.EventThread.set_permissions(user, overwrite=None) #clears permissions on the channel
+				await self.EventThread.remove_user(user)
 			await self.UpdateEmbed()
 
 	async def UpdateEmbed(self):
@@ -172,7 +173,7 @@ class CalendarEvent():
 			
 
  #constructor from event message (when re-initializing events from messages)
-async def CreateEventFromMessage(calendar, message) -> CalendarEvent:
+async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarEvent:
 	eventEmbed = message.embeds[0]
 
 	result = CalendarEvent()
@@ -186,15 +187,24 @@ async def CreateEventFromMessage(calendar, message) -> CalendarEvent:
 	result.EventMessage = message
 	result.RSVPList = []
 
-	test = await GetUserFromMention("2357328573", calendar.Guild)
-	print(test)
+	print(f"Reading event {result.Title}")
+	#see if the message has a thread and save it
+	#seems like right now, the only way to get the thread is to look at ALL the threads
+	#and check the referenced messageid on the first message in that thread
+	for thread in message.channel.threads:
+		messages = await thread.history(limit=1, oldest_first=True).flatten()
+		if(messages[0].reference.message_id == message.id):
+			result.EventThread = thread
+			print("Found thread")
+			break
+	
+	
 	
 	for field in eventEmbed.fields:
 		if(field.name == _fieldHost):
 			#mention text, when in string form, looks like "<@#####>", so we need to strip out the brackets and @ to get the id itself
 			hostName = field.value
-			hostID = int(hostName[2:-1])
-			result.Host = await message.guild.fetch_member(hostID)
+			result.Host = await GetUserFromMention(hostName, calendar.Guild)
 		elif(field.name == _fieldStartTime):
 			try:
 				eventDate = parse(field.value)
@@ -205,16 +215,18 @@ async def CreateEventFromMessage(calendar, message) -> CalendarEvent:
 		elif(field.name[:len(_fieldRSVP)] == _fieldRSVP):
 			rsvpMentions = field.value.split(' ')
 			for rsvp in rsvpMentions:
-				userForRSVP = await GetUserFromMention(rsvp, calendar.Guild)
-				if(userForRSVP != None):
-					result.RSVPList.append(userForRSVP)
+				if(rsvp != "None"):
+					userForRSVP = await GetUserFromMention(rsvp, calendar.Guild)
+					if(userForRSVP != None):
+						result.RSVPList.append(userForRSVP)
 
 		elif(field.name[:len(_fieldMaybes)] == _fieldMaybes):
 			maybeMentions = field.value.split(' ')
 			for maybe in maybeMentions:
-				userForMaybe = await GetUserFromMention(maybe, calendar.Guild)
-				if(userForMaybe != None):
-					result.MaybeList.append(userForMaybe)
+				if(maybe != "None"):
+					userForMaybe = await GetUserFromMention(maybe, calendar.Guild)
+					if(userForMaybe != None):
+						result.MaybeList.append(userForMaybe)
 
 		elif(field.name == _fieldLinks):
 			textLinks = GetTextLinks(field.value)
@@ -247,7 +259,8 @@ async def CreateEventFromCommand(calendar, ctx, commandText):
 	splitCommand = commandText.split("|")
 
 	#strict definition:
-	if(len(splitCommand) == 3):
+	#changed to be >= 3 instead of 3, in case they put | in their descriptions
+	if(len(splitCommand) >= 3):
 		result.Title = splitCommand[0]
 		result.StartDateTime = parse(splitCommand[1], fuzzy=True)
 		result.Description = splitCommand[2]
@@ -263,9 +276,15 @@ async def CreateEventFromCommand(calendar, ctx, commandText):
 	return result
 
 async def GetUserFromMention(mention, guild):
-	#mentions are format @<#######>, so we want to strip out the @ amd brackets
+	#print(f"mention: {mention}")
+	#mentions are format @<#######> OR <@!#####>, so we want to strip out the @ amd brackets
 	try:
-		userID = mention[2:-1]
+		userID = -1
+		if(mention[2] == "!"):
+			userID = int(mention[3:-1])
+		else:
+			userID = int(mention[2:-1])
+
 		user = await guild.fetch_member(userID)
 		return user
 	except NotFound:

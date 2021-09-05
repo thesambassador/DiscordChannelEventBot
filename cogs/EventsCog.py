@@ -29,10 +29,7 @@ class EventsCog(commands.Cog):
         testEmbed.add_field(name="field4", value="4")
 
         await ctx.send(embed=testEmbed)
-    
-    @commands.command(pass_context=True)
-    async def purgetest(self, ctx : Context):
-        await ctx.channel.purge()
+
     # @event.error
     # async def event_error(self, ctx, error):
     #     print("event command failed")

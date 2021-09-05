@@ -15,7 +15,7 @@ from oauthlib.oauth2.rfc6749.clients import base
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 
 class GoogleCalendarHelper():
-    def __init__(self) -> None:
+    def __init__(self, guildID) -> None:
         creds = None
         saFile = 'sa_file.json'
         # The file token.json stores the user's access and refresh tokens, and is
@@ -41,11 +41,14 @@ class GoogleCalendarHelper():
                 token.write(creds.to_json())
 
         self.service = build('calendar', 'v3', credentials=creds)
-        self.calendarID = os.getenv('GOOGLE_CALENDAR_ID')
+        self.calendarID = self.GetCalendarIDForGuild(guildID)
+        self.calendarActive = True
+        if(self.calendarID == None):
+            self.calendarActive = False
         self.timeZone = os.getenv('GOOGLE_CALENDAR_TIMEZONE', 'America/Chicago')
 
     def CreateEvent(self, eventName, eventDescription, startTime, endTime=None):
-        
+        if(not self.calendarActive): return
         if(endTime == None):
             endTime = startTime + datetime.timedelta(hours=1)
 
@@ -68,6 +71,7 @@ class GoogleCalendarHelper():
         return newEvent
 
     def UpdateEvent(self, eventID, newName, newDescripion, newStart, newEnd=None):
+        if(not self.calendarActive): return
         if(newEnd == None):
             endTime = newEnd + datetime.timedelta(hours=1)
         event = self.service.events().get(calendarId=self.calendarID, eventId=eventID).execute()
@@ -81,9 +85,11 @@ class GoogleCalendarHelper():
         return updated_event
 
     def DeleteEvent(self, eventID):
+        if(not self.calendarActive): return
         self.service.events().delete(calendarId=self.calendarID, eventId=eventID).execute()
         
     def GetEvent(self, eventID):
+        if(not self.calendarActive): return
         event = self.service.events().get(calendarId = self.calendarID, eventId=eventID).execute()
         return event
 
@@ -98,3 +104,22 @@ class GoogleCalendarHelper():
         decoded = base64.urlsafe_b64decode(eid + '=====') #the == adds padding to allow it to decode? python 3 ignores extra padding
         strDecoded = decoded.decode('ascii').split(' ')
         return strDecoded[0]
+
+    def GetCalendarIDForGuild(self, guildID):
+        filename = "GuildGoogleCalenderIDs"
+        calIDLookup = open(filename, "r")
+
+        for line in calIDLookup:
+            x = line.split()
+            if(len(x) != 2): continue
+            
+            try:
+                lineGuildID = int(x[0])
+                calid = x[1]
+                if(lineGuildID == guildID):
+                    print(f"Found {calid} for guild {lineGuildID}")
+                    return calid
+            except:
+                continue
+        calIDLookup.close()
+

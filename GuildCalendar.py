@@ -29,10 +29,10 @@ class GuildCalendar():
 
 		self.EventsChannel = None
 		self.ArchiveChannel = None
-		self.EventCategoryChannel = None
 
 		self.SummaryMessage = None
-		self.GCalHelper = GoogleCalendarHelper()
+		self.LastArchiveDateTime : datetime.datetime = datetime.now()
+		self.GCalHelper = GoogleCalendarHelper(guild.id)
 
 		self.TaskQueue = asyncio.Queue()
 		asyncio.create_task(self.EventChangeWorker(self.TaskQueue))
@@ -49,7 +49,6 @@ class GuildCalendar():
 	async def LoadCalendarFromEventsChannel(self):
 		eventChannelName = "events" #todo: change this to a config value
 		archiveChannelName = "eventarchive"
-		eventCategoryName = "event-channels"
 
 		print(f"finding events channel for guild {self.Guild.name}")
 		self.EventsChannel = next((x for x in self.Guild.channels if x.name == eventChannelName))
@@ -59,8 +58,6 @@ class GuildCalendar():
 		print(f"finding archive channel for guild {self.Guild.name}")
 		self.ArchiveChannel = next((x for x in self.Guild.channels if x.name == archiveChannelName))
 
-		print("finding the event channel category")
-		self.EventCategoryChannel = next((x for x in self.Guild.categories if x.name == eventCategoryName))
 
 		toRemove = []
 
@@ -162,7 +159,7 @@ class GuildCalendar():
 			await self.DeleteEvent(calEvent)
 
 	async def HandleReactAdd(self, payload):
-		print("REACTION!")
+		#print("REACTION!")
 		reactedEvent = self.GetEventFromEventMessage(payload.message_id)
 		if(reactedEvent != None):
 			print(f"reacted to event {reactedEvent.Title}")
@@ -184,11 +181,13 @@ class GuildCalendar():
 
 			elif(str(payload.emoji) == self.Emoji_TextChannel):
 				if(user.id == reactedEvent.Host.id):
-					await reactedEvent.CreateThreadForEvent(self.EventCategoryChannel)
+					await reactedEvent.CreateThreadForEvent()
 				else:
 					pass #only the host can trigger this?
 
 				await(reactedEvent.EventMessage.remove_reaction(self.Emoji_TextChannel, user))
+			else:
+				await reactedEvent.EventMessage.remove_reaction(payload.emoji, user)
 
 
 	async def DeleteEvent(self, event : CalendarEvent):
@@ -287,13 +286,22 @@ class GuildCalendar():
 
 		summaryEmbeds.append(usageEmbed)
 
+		#check if the summary is currently the LAST message in the channel. 
+		#if yes, just edit that message
+		lastMessage = await self.EventsChannel.fetch_message(self.EventsChannel.last_message_id)
+		if(GuildCalendar.IsSummaryMessage(lastMessage)):
+			print("summary is last, just editting")
+			self.SummaryMessage = lastMessage
+			await self.SummaryMessage.edit(embeds=summaryEmbeds)
+
+		#if no, delete that message and re-post
 		#delete the existing summary set if it exists
-		if(self.SummaryMessage != None):
-			await self.SummaryMessage.delete()
-			self.SummaryMessage = None
-		
-		#post the new one with the embed sets
-		self.SummaryMessage = await self.EventsChannel.send(embeds=summaryEmbeds)
+		else:
+			if(self.SummaryMessage != None):
+				await self.SummaryMessage.delete()
+				self.SummaryMessage = None
+			#post the new one with the embed sets
+			self.SummaryMessage = await self.EventsChannel.send(embeds=summaryEmbeds)
 
 	#embeds can be a max of 6000 characters including title and probably other stuff...
 	#probably should handle that at some point just in case but not now TODO
@@ -324,7 +332,7 @@ class GuildCalendar():
 		self.TaskQueue.put_nowait(lambda thread=thread: self.ThreadJoined(thread))
 
 	async def ThreadJoined(self, thread:Thread):
-		print("thread joined")
+		#print("thread joined")
 		pass
 
 	#threads probably generally won't be deleted but... ya know
@@ -379,11 +387,17 @@ class GuildCalendar():
 
 			self.ArchivedEventsList.append(oldEvent)
 
+		shouldArchive = numArchived > 0
+		#if it's a new day, we should update the summary to make sure that "today" is accurate
+		if(self.LastArchiveDateTime.date() != datetime.now().date()):
+			shouldArchive = True
+
 		#have it update the summary
-		if(numArchived > 0):
+		if(shouldArchive):
 			await self.UpdateSummary()
 
 		print("Done archiving")
+		self.LastArchiveDateTime = datetime.now()
 	
 	def IsSummaryMessage(message):
 		sumString = "Events Today"
