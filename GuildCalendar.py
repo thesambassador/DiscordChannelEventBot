@@ -141,10 +141,13 @@ class GuildCalendar():
 
 			oldDateTime = calEvent.StartDateTime
 			await calEvent.UpdateMessage(msg.content)
-			#if the time changed, it may need to be removed and re-added
-			if(oldDateTime != calEvent.StartDateTime):
-				await self.DeleteEvent(calEvent)
-				await self.AddEvent(calEvent, True)
+			#not sure why this was my logic, commenting for now #if the time changed, it may need to be removed and re-added
+			# if(oldDateTime != calEvent.StartDateTime):
+			# 	await self.DeleteEvent(calEvent)
+			# 	await self.AddEvent(calEvent, True)
+
+			#update summary
+			await self.UpdateSummary()
 
 			if(calEvent.EventMessage != None):
 				await calEvent.EventMessage.edit(embed=calEvent.CreateEmbed())
