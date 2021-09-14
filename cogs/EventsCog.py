@@ -38,6 +38,18 @@ class EventsCog(commands.Cog):
     async def forcearchive(self, ctx : Context):
         if(ctx.guild.id in self.GuildCalDict.keys()):
             await self.GuildCalDict[ctx.guild.id].HandleArchiveOld()
+    
+    @commands.command(pass_context = True)
+    async def testembed(self, ctx : Context, *, arg):
+        args = arg.split()
+        if(len(args) == 2):
+            resultEmbed = Embed(title=args[0], description=args[1])
+            await ctx.send(embed=resultEmbed)
+        elif(len(args) == 4):
+            resultEmbed = Embed(title=args[0], description=args[1])
+            resultEmbed.add_field(name=args[2], value=args[3])
+            await ctx.send(embed=resultEmbed)
+        
 
     @commands.Cog.listener()
     async def on_ready(self):
