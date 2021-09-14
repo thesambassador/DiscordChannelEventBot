@@ -46,7 +46,7 @@ class CalendarEvent():
 
 	def CreateEmbed(self) -> Embed:
 		result = discord.Embed(title = self.Title, description = self.Description, url = self.CreationMessage.jump_url)
-		result.add_field(name=_fieldHost, value = self.Host.mention)
+		result.add_field(name=_fieldHost, value = self.GetManualMention(self.Host))
 		result.add_field(name=_fieldStartTime, value = self.StartDateTime.strftime("%A, %B %d at %I:%M %p").replace(" 0", " ")) #gross python. GROSS.
 
 		#for links, we're gonna be crazy and allow multiple...
@@ -148,12 +148,13 @@ class CalendarEvent():
 			await self.EventThread.delete()
 			self.EventThread = None
 
-
+	def GetManualMention(self, user:discord.User):
+		return f"<@{user.id}>"
 
 	def GetMentionList(self, targetList):
 		if(len(targetList)==0):
 			return "None"
-		result = " ".join([(x.mention) for x in targetList])
+		result = " ".join([(self.GetManualMention(x)) for x in targetList])
 		#print("RSVPS: " + result)
 		return result
 	
