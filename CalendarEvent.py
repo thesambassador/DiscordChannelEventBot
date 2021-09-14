@@ -47,7 +47,7 @@ class CalendarEvent():
 
 	def CreateEmbed(self) -> Embed:
 		result = discord.Embed(title = self.Title, description = self.Description, url = self.CreationMessage.jump_url)
-		result.add_field(name=_fieldHost, value = self.GetManualMention(self.Host))
+		result.add_field(name=_fieldHost, value = GetSanitizedNicknameLink(self.Host))
 		result.add_field(name=_fieldStartTime, value = self.StartDateTime.strftime("%A, %B %d at %I:%M %p").replace(" 0", " ")) #gross python. GROSS.
 
 		#for links, we're gonna be crazy and allow multiple...
@@ -158,7 +158,7 @@ class CalendarEvent():
 		
 		userLinkList = []
 		for user in targetList:
-			userLink = f"[{user.display_name}]({user.id})"
+			userLink = GetSanitizedNicknameLink(user)
 			userLinkList.append(userLink)
 
 		result = ", ".join(userLinkList)
@@ -200,8 +200,13 @@ def GetUserIDsFromRSVPList(rsvpString):
 			result.append(id)
 	return result
 
-
-
+#don't allow [] or () in nicknames
+def GetSanitizedNicknameLink(user : discord.Member):
+	nickname = user.display_name
+	id = user.id
+	
+	santizedNickname = re.sub('[\[\]\(\)]', '', nickname)
+	return f"[{santizedNickname}]({id})"
 
  #constructor from event message (when re-initializing events from messages)
 async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarEvent:
@@ -233,9 +238,18 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 	
 	for field in eventEmbed.fields:
 		if(field.name == _fieldHost):
-			#mention text, when in string form, looks like "<@#####>", so we need to strip out the brackets and @ to get the id itself
 			hostName = field.value
-			result.Host = await GetUserFromMention(hostName, calendar.Guild)
+			#legacy
+			if(hostName[0]=="<"):
+				result.Host = await GetUserFromMention(hostName, calendar.Guild)
+				#mention text, when in string form, looks like "<@#####>", so we need to strip out the brackets and @ to get the id itself
+			else:
+				#should just be 1 value
+				hostIDList = GetUserIDsFromRSVPList(hostName)
+				hostID = hostIDList[0]
+				result.Host = await calendar.Guild.fetch_member(hostID)
+				print(f"got host {result.Host.display_name}")
+			
 		elif(field.name == _fieldStartTime):
 			try:
 				eventDate = parse(field.value)
