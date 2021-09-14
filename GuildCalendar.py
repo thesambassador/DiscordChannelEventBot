@@ -190,7 +190,9 @@ class GuildCalendar():
 
 				await(reactedEvent.EventMessage.remove_reaction(self.Emoji_TextChannel, user))
 			else:
-				await reactedEvent.EventMessage.remove_reaction(payload.emoji, user)
+				pass
+				#temporarily doing this to test something
+				#await reactedEvent.EventMessage.remove_reaction(payload.emoji, user)
 
 
 	async def DeleteEvent(self, event : CalendarEvent):
