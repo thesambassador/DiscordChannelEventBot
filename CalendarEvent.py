@@ -7,6 +7,7 @@ from discord.threads import Thread
 from GoogleCalendarHelper import GoogleCalendarHelper
 import datetime
 import discord
+import re
 from discord.embeds import Embed
 from dateutil.parser import parse
 from discord.errors import Forbidden, HTTPException, NotFound
@@ -154,7 +155,13 @@ class CalendarEvent():
 	def GetMentionList(self, targetList):
 		if(len(targetList)==0):
 			return "None"
-		result = " ".join([(self.GetManualMention(x)) for x in targetList])
+		
+		userLinkList = []
+		for user in targetList:
+			userLink = f"({user.display_name})[{user.id}]"
+			userLinkList.append(userLink)
+
+		result = " ".join(userLinkList)
 		#print("RSVPS: " + result)
 		return result
 	
@@ -172,6 +179,28 @@ class CalendarEvent():
 			eventTime = self.StartDateTime.strftime("%A, %B %d at %I:%M %p").replace(" 0", " ")
 		return eventTitle + eventTime
 			
+def GetUserIDsFromRSVPList(rsvpString):
+	result = []
+	#legacy, old way was with mentions, but ran into problems with user caching on some people's machines
+	if(rsvpString[0]=="<"):
+		rsvpMentions = rsvpString.split(' ')
+		for rsvp in rsvpMentions:
+			if(rsvp != "None"):
+				userForRSVP = GetUserIDFromMention(rsvp)
+				if(userForRSVP != None):
+					result.append(userForRSVP)
+	else:
+		#new way is a list of the format (nickname)[userid] (separated by spaces, but some nicknames can have spaces)
+		pattern = r"\((.+?)\)\[(.+?)\]"
+		#this returns a list of tuples where the 2nd tuple element is the userid
+		rsvps = re.findall(pattern, rsvpString)
+		for rsvpTuple in rsvps:
+			idString = rsvpTuple[1]
+			id = int(idString)
+			result.append(id)
+
+
+
 
  #constructor from event message (when re-initializing events from messages)
 async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarEvent:
@@ -214,20 +243,18 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 				print("invalid date, couldn't read")
 				result.StartDateTime = datetime.datetime.now
 		elif(field.name[:len(_fieldRSVP)] == _fieldRSVP):
-			rsvpMentions = field.value.split(' ')
+			rsvpMentions = GetUserIDsFromRSVPList(field.value)
 			for rsvp in rsvpMentions:
-				if(rsvp != "None"):
-					userForRSVP = await GetUserFromMention(rsvp, calendar.Guild)
-					if(userForRSVP != None):
-						result.RSVPList.append(userForRSVP)
+				userForRSVP = await calendar.Guild.fetch_member(rsvp)
+				if(userForRSVP != None):
+					result.RSVPList.append(userForRSVP)
 
 		elif(field.name[:len(_fieldMaybes)] == _fieldMaybes):
-			maybeMentions = field.value.split(' ')
+			maybeMentions = GetUserIDsFromRSVPList(field.value)
 			for maybe in maybeMentions:
-				if(maybe != "None"):
-					userForMaybe = await GetUserFromMention(maybe, calendar.Guild)
-					if(userForMaybe != None):
-						result.MaybeList.append(userForMaybe)
+				userForMaybe = await calendar.Guild.fetch_member(maybe)
+				if(userForMaybe != None):
+					result.MaybeList.append(userForMaybe)
 
 		elif(field.name == _fieldLinks):
 			textLinks = GetTextLinks(field.value)
@@ -293,6 +320,18 @@ async def GetUserFromMention(mention, guild):
 	except HTTPException:
 		return None
 
+def GetUserIDFromMention(mention):
+	try:
+		userID = -1
+		if(mention[2] == "!"):
+			userID = int(mention[3:-1])
+		else:
+			userID = int(mention[2:-1])
+		return userID
+	except NotFound:
+		return None
+	except HTTPException:
+		return None
 
 async def GetMessageFromURL(url, guild):
 	vals = url.split("/")
