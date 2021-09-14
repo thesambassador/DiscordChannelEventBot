@@ -196,6 +196,10 @@ def GetUserIDsFromRSVPList(rsvpString):
 		rsvps = re.findall(pattern, rsvpString)
 		for rsvpTuple in rsvps:
 			idString = rsvpTuple[1]
+			#new method to have http in there... christ. strip out the http
+			if(idString[0]=="h"):
+				idString = idString[7:]
+				
 			id = int(idString)
 			result.append(id)
 	return result
@@ -206,7 +210,7 @@ def GetSanitizedNicknameLink(user : discord.Member):
 	id = user.id
 	
 	santizedNickname = re.sub('[\[\]\(\)]', '', nickname)
-	return f"[{santizedNickname}]({id})"
+	return f"[{santizedNickname}](http://{id})"
 
  #constructor from event message (when re-initializing events from messages)
 async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarEvent:
