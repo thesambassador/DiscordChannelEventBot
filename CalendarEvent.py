@@ -158,10 +158,10 @@ class CalendarEvent():
 		
 		userLinkList = []
 		for user in targetList:
-			userLink = f"({user.display_name})[{user.id}]"
+			userLink = f"[{user.display_name}]({user.id})"
 			userLinkList.append(userLink)
 
-		result = " ".join(userLinkList)
+		result = ", ".join(userLinkList)
 		#print("RSVPS: " + result)
 		return result
 	
@@ -191,13 +191,14 @@ def GetUserIDsFromRSVPList(rsvpString):
 					result.append(userForRSVP)
 	else:
 		#new way is a list of the format (nickname)[userid] (separated by spaces, but some nicknames can have spaces)
-		pattern = r"\((.+?)\)\[(.+?)\]"
+		pattern = r"\[(.+?)\]\((.+?)\)"
 		#this returns a list of tuples where the 2nd tuple element is the userid
 		rsvps = re.findall(pattern, rsvpString)
 		for rsvpTuple in rsvps:
 			idString = rsvpTuple[1]
 			id = int(idString)
 			result.append(id)
+	return result
 
 
 
@@ -244,6 +245,7 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 				result.StartDateTime = datetime.datetime.now
 		elif(field.name[:len(_fieldRSVP)] == _fieldRSVP):
 			rsvpMentions = GetUserIDsFromRSVPList(field.value)
+			print(f"Got {len(rsvpMentions)} RSVPs")
 			for rsvp in rsvpMentions:
 				userForRSVP = await calendar.Guild.fetch_member(rsvp)
 				if(userForRSVP != None):
@@ -251,6 +253,7 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 
 		elif(field.name[:len(_fieldMaybes)] == _fieldMaybes):
 			maybeMentions = GetUserIDsFromRSVPList(field.value)
+			print(f"Got {len(rsvpMentions)} maybes")
 			for maybe in maybeMentions:
 				userForMaybe = await calendar.Guild.fetch_member(maybe)
 				if(userForMaybe != None):
