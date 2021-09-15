@@ -96,11 +96,12 @@ class CalendarEvent():
 			#create the thread
 			self.EventThread = await self.EventMessage.create_thread(name=possibleTitle)
 
+			allUsers = self.RSVPList + self.MaybeList
 			#add all rsvped people to the thread
-			for rsvp in self.RSVPList:
-				await self.EventThread.add_user(rsvp)
-			for maybe in self.MaybeList:
-				await self.EventThread.add_user(maybe)
+			mentionList = ", ".join([x.mention for x in allUsers])
+			message = f"Event thread created for {self.Title} {mentionList}"
+
+			await self.EventThread.send(content=message)
 		else:
 			pass #thread already exists
 		

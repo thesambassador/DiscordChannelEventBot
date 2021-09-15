@@ -186,7 +186,8 @@ class GuildCalendar():
 				if(user.id == reactedEvent.Host.id):
 					await reactedEvent.CreateThreadForEvent()
 				else:
-					pass #only the host can trigger this?
+					#changing this to allow anybody to do this?
+					await reactedEvent.CreateThreadForEvent()
 
 				await(reactedEvent.EventMessage.remove_reaction(self.Emoji_TextChannel, user))
 			else:
