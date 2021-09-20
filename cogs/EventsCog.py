@@ -1,5 +1,7 @@
+from discord import guild
 from discord.embeds import Embed
 from discord.ext.commands.context import Context
+from discord.message import Message
 from discord.threads import Thread
 from GuildCalendar import CreateCalendarForGuild
 from discord.ext import commands
@@ -49,6 +51,16 @@ class EventsCog(commands.Cog):
             resultEmbed = Embed(title=args[0], description=args[1])
             resultEmbed.add_field(name=args[2], value=args[3])
             await ctx.send(embed=resultEmbed)
+
+    # @commands.command(pass_context = True)
+    # async def testdelete(self, ctx:Context, *, arg):
+    #     if(ctx.guild.name == "SamTestBotServer"):
+    #         args = arg.split()
+    #         if(len(args) == 1):
+    #             id = int(args[0])
+    #             targetMessage = await ctx.channel.fetch_message(id)
+    #             await targetMessage.delete()
+
         
 
     @commands.Cog.listener()
@@ -80,7 +92,7 @@ class EventsCog(commands.Cog):
         if(payload.guild_id in self.GuildCalDict.keys()):
             await self.GuildCalDict[payload.guild_id].HandleReactAdd(payload)
         
-        print(str(payload.emoji))
+        #print(str(payload.emoji))
     
     @commands.Cog.listener()
     async def on_thread_join(self, thread:Thread):
@@ -98,6 +110,10 @@ class EventsCog(commands.Cog):
             if(not before.archived and after.archived):
                 print("thread archived")
         pass
+
+    @commands.Cog.listener()
+    async def on_message(self, message:Message):
+        await self.GuildCalDict[message.guild.id].HandleNewMessage(message)
 
     @tasks.loop(minutes=30)
     async def ArchiveOld(self):

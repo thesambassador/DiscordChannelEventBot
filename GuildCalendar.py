@@ -1,6 +1,8 @@
 from hashlib import new
 
 from dateutil.parser import ParserError
+from discord.components import C
+from discord.enums import ChannelType, MessageType
 from discord.threads import Thread
 from GoogleCalendarHelper import GoogleCalendarHelper
 from discord import message
@@ -347,7 +349,33 @@ class GuildCalendar():
 
 	async def ThreadDeleted(self, thread:Thread):
 		pass
-	
+
+	async def HandleNewMessage(self, message:message.Message):
+		self.TaskQueue.put_nowait(lambda message=message: self.NewMessage(message))
+
+	#we want to suppress discord's annoying "added x user to thread" and "started a thread" messages
+	#edit - seems like we can't delete the thread "x user added to thread" message, so I'll just add users another way
+	async def NewMessage(self, message:message.Message):
+		#print(f"--MESSAGE TYPE: {message.type}, CHANNELTYPE: {message.channel.type}")
+		#check to see if the message is in the events channel first
+		if(self.IsEventThreadCreatedMessage(message)):
+			await message.delete()
+		#otherwise, check and see if it's in a thread that's in the events channel (apparently you can't delete these so commenting this out)
+		# elif(self.IsEventThreadMessage(message)):
+		# 	if(message.type == discord.MessageType.recipient_add or message.type == discord.MessageType.recipient_remove):
+		# 		await message.channel.delete_messages([message])
+
+	def IsEventThreadCreatedMessage(self, message:message.Message):
+		return ((message.channel.id == self.EventsChannel.id) and (message.type == discord.MessageType.thread_created))
+		
+	def IsEventThreadMessage(self, message:message.Message):
+		if(message.channel.type == discord.ChannelType.public_thread):
+			if(message.channel.parent.id == self.EventsChannel.id):
+				#print("event thread message!")
+				return True
+
+			return False
+
 	def GetEventFromEventMessage(self, messageID):
 		for event in self.EventsList:
 			if(event.EventMessage != None and event.EventMessage.id == messageID):

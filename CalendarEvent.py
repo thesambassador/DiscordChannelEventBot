@@ -21,6 +21,7 @@ _fieldRSVP = "RSVPs"
 _fieldMaybes = "Maybes"
 _subFieldCal = "Calendar"
 _subFieldChannel = "Channel"
+_threadMentionMessageStart = "Event thread created for"
 
 class CalendarEvent():
 
@@ -33,6 +34,7 @@ class CalendarEvent():
 		self.CalendarRef = None
 		self.CreationMessage = None
 		self.EventMessage : discord.Message = None
+		self.ThreadMentionMessage : discord.Message = None
 		self.GCalendarLink = None
 		self.GCalendarData = None
 
@@ -96,15 +98,18 @@ class CalendarEvent():
 			#create the thread
 			self.EventThread = await self.EventMessage.create_thread(name=possibleTitle)
 
-			allUsers = self.RSVPList + self.MaybeList
-			#add all rsvped people to the thread
-			mentionList = ", ".join([x.mention for x in allUsers])
-			message = f"Event thread created for {self.Title} {mentionList}"
+			message = self.GetThreadCreatedMessage()
 
-			await self.EventThread.send(content=message)
+			self.ThreadMentionMessage = await self.EventThread.send(content=message)
 		else:
 			pass #thread already exists
-		
+	
+	def GetThreadCreatedMessage(self):
+		allUsers = self.RSVPList + self.MaybeList
+		#add all rsvped people to the thread
+		mentionList = ", ".join([x.mention for x in allUsers])
+		message = f"Event thread created for {self.Title} {mentionList}"
+		return mentionList
 
 	async def AddRSVP(self, user, isMaybe=False):
 		toUse = self.RSVPList
@@ -119,10 +124,20 @@ class CalendarEvent():
 				self.MaybeList.remove(user)
 
 		if(user not in toUse):
-			#print("adding")
+			print("adding")
 			toUse.append(user)
 			if(self.EventThread != None):
-				await self.EventThread.add_user(user)
+				if(self.ThreadMentionMessage != None):
+					print("adding to thread")
+					await self.ThreadMentionMessage.edit(content = self.GetThreadCreatedMessage())
+					#going to add by editing the initial thread added message, instead of using add_user?
+					
+				else:
+					#legacy events?
+					print("didn't have the threadmentionmessage so will just use this old method for now")
+					await self.EventThread.add_user(user)
+
+
 			await self.UpdateEmbed()
 		
 
@@ -233,10 +248,16 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 	#seems like right now, the only way to get the thread is to look at ALL the threads
 	#and check the referenced messageid on the first message in that thread
 	for thread in message.channel.threads:
-		messages = await thread.history(limit=1, oldest_first=True).flatten()
+		messages = await thread.history(limit=2, oldest_first=True).flatten()
+		if(len(messages) == 0): continue
+
 		if(messages[0].reference.message_id == message.id):
 			result.EventThread = thread
 			print("Found thread")
+			if(len(messages) >= 2):
+				if(DoesStringStartWith(messages[1].content, _threadMentionMessageStart)):
+					result.ThreadMentionMessage = messages[1]
+					print("found thread mention message")
 			break
 	
 	
@@ -395,3 +416,12 @@ def GetLinkToChannel(channel : TextChannel):
 	guildID = channel.guild.id
 	channelID = channel.id
 	return f"https://discord.com/channels/{guildID}/{channelID}/"
+
+def DoesStringStartWith(stringToCheck : str, startWithString:str):
+	startWithLength = len(startWithString)
+	if(len(stringToCheck) >= startWithLength): 
+		if(stringToCheck[:startWithLength] == startWithString):
+			return True
+	return False
+	
+
