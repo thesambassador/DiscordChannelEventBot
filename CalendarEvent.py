@@ -109,7 +109,7 @@ class CalendarEvent():
 		#add all rsvped people to the thread
 		mentionList = ", ".join([x.mention for x in allUsers])
 		message = f"Event thread created for {self.Title} {mentionList}"
-		return mentionList
+		return message
 
 	async def AddRSVP(self, user, isMaybe=False):
 		toUse = self.RSVPList
