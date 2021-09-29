@@ -107,9 +107,7 @@ class EventsCog(commands.Cog):
     @commands.Cog.listener()
     async def on_thread_update(self, before:Thread, after:Thread):
         if(before.guild.id in self.GuildCalDict.keys()):
-            if(not before.archived and after.archived):
-                print("thread archived")
-        pass
+            await self.GuildCalDict[before.guild.id].HandleThreadUpdated(before, after)
 
     @commands.Cog.listener()
     async def on_message(self, message:Message):

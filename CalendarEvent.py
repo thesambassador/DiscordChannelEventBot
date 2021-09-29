@@ -124,11 +124,11 @@ class CalendarEvent():
 				self.MaybeList.remove(user)
 
 		if(user not in toUse):
-			print("adding")
+			#print("adding")
 			toUse.append(user)
-			if(self.EventThread != None):
+			if(self.EventThread != None and not self.EventThread.archived):
 				if(self.ThreadMentionMessage != None):
-					print("adding to thread")
+					#print("adding to thread")
 					await self.ThreadMentionMessage.edit(content = self.GetThreadCreatedMessage())
 					#going to add by editing the initial thread added message, instead of using add_user?
 					
@@ -152,9 +152,13 @@ class CalendarEvent():
 			removed = True
 
 		if(removed):
-			if(self.EventThread != None):
+			if(self.EventThread != None and not self.EventThread.archived):
 				await self.EventThread.remove_user(user)
 			await self.UpdateEmbed()
+
+	async def UpdateThreadMentionMessage(self):
+		if(self.EventThread != None and not self.EventThread.archived):
+			await self.ThreadMentionMessage.edit(content = self.GetThreadCreatedMessage())
 
 	async def UpdateEmbed(self):
 		if(self.EventMessage != None):
