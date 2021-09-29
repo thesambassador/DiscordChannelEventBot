@@ -354,6 +354,7 @@ class GuildCalendar():
 		self.TaskQueue.put_nowait(lambda before=before, after=after: self.ThreadUpdated(before,after))
 
 	async def ThreadUpdated(self, before:Thread, after:Thread):
+		print("threadupdated")
 		event = self.GetEventForThread(after)
 		#update the event thread to the newly updated one so archived is updated
 		event.EventThread = after
