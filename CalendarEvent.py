@@ -251,6 +251,8 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 	#see if the message has a thread and save it
 	#seems like right now, the only way to get the thread is to look at ALL the threads
 	#and check the referenced messageid on the first message in that thread
+	
+	#note that message.channel.threads seems to only return unarchived threads
 	for thread in message.channel.threads:
 		messages = await thread.history(limit=2, oldest_first=True).flatten()
 		if(len(messages) == 0): continue
@@ -264,7 +266,19 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 					print("found thread mention message")
 			break
 	
-	
+	#so now iterate over archived threads too?
+	async for thread in message.channel.archived_threads:
+		messages = await thread.history(limit=2, oldest_first=True).flatten()
+		if(len(messages) == 0): continue
+
+		if(messages[0].reference.message_id == message.id):
+			result.EventThread = thread
+			print("Found archived thread")
+			if(len(messages) >= 2):
+				if(DoesStringStartWith(messages[1].content, _threadMentionMessageStart)):
+					result.ThreadMentionMessage = messages[1]
+					print("found thread mention message")
+			break
 	
 	for field in eventEmbed.fields:
 		if(field.name == _fieldHost):

@@ -354,15 +354,18 @@ class GuildCalendar():
 		self.TaskQueue.put_nowait(lambda before=before, after=after: self.ThreadUpdated(before,after))
 
 	async def ThreadUpdated(self, before:Thread, after:Thread):
+		event = self.GetEventForThread(after)
+		#update the event thread to the newly updated one so archived is updated
+		event.EventThread = after
+		if(event == None): return
 		if(before.archived and not after.archived):
 			print("thread unarchived")
-			event = self.GetEventForThread(after)
-			if(event != None):
-				event.UpdateThreadMentionMessage()
+			event.UpdateThreadMentionMessage()
 		elif(not before.archived and after.archived):
 			print("thread archived")
 		else:
 			print("some other update")
+		
 
 	def GetEventForThread(self, thread:Thread) -> CalendarEvent:
 		for event in self.EventsList:
