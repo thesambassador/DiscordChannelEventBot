@@ -267,7 +267,7 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 			break
 	
 	#so now iterate over archived threads too?
-	async for thread in message.channel.archived_threads:
+	async for thread in message.channel.archived_threads():
 		messages = await thread.history(limit=2, oldest_first=True).flatten()
 		if(len(messages) == 0): continue
 
