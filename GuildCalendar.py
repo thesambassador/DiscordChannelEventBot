@@ -356,9 +356,11 @@ class GuildCalendar():
 	async def ThreadUpdated(self, before:Thread, after:Thread):
 		print("threadupdated")
 		event = self.GetEventForThread(after)
+		if(event == None): return
+
 		#update the event thread to the newly updated one so archived is updated
 		event.EventThread = after
-		if(event == None): return
+
 		if(before.archived and not after.archived):
 			print("thread unarchived")
 			event.UpdateThreadMentionMessage()
