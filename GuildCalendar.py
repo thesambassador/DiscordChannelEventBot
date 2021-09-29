@@ -372,8 +372,9 @@ class GuildCalendar():
 
 	def GetEventForThread(self, thread:Thread) -> CalendarEvent:
 		for event in self.EventsList:
-			if(event.EventThread.id == thread.id):
-				return event
+			if(event.EventThread != None):
+				if(event.EventThread.id == thread.id):
+					return event
 		return None
 
 	async def HandleNewMessage(self, message:message.Message):
