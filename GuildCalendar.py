@@ -296,7 +296,8 @@ class GuildCalendar():
 
 		#check if the summary is currently the LAST message in the channel. 
 		#if yes, just edit that message
-		lastMessage = await self.EventsChannel.fetch_message(self.EventsChannel.last_message_id)
+		messages = await self.EventsChannel.history(limit=1, oldest_first=False).flatten()
+		lastMessage = messages[0]
 		if(GuildCalendar.IsSummaryMessage(lastMessage)):
 			print("summary is last, just editting")
 			self.SummaryMessage = lastMessage
@@ -354,16 +355,18 @@ class GuildCalendar():
 		self.TaskQueue.put_nowait(lambda before=before, after=after: self.ThreadUpdated(before,after))
 
 	async def ThreadUpdated(self, before:Thread, after:Thread):
-		print("threadupdated")
+		print(f"Threadupdated: {before.id}, {after.id}")
 		event = self.GetEventForThread(after)
-		if(event == None): return
+		if(event == None): 
+			print("not an event thread")
+			return
 
 		#update the event thread to the newly updated one so archived is updated
 		event.EventThread = after
 
 		if(before.archived and not after.archived):
 			print("thread unarchived")
-			event.UpdateThreadMentionMessage()
+			await event.UpdateThreadMentionMessage()
 		elif(not before.archived and after.archived):
 			print("thread archived")
 		else:
@@ -372,7 +375,9 @@ class GuildCalendar():
 
 	def GetEventForThread(self, thread:Thread) -> CalendarEvent:
 		for event in self.EventsList:
+			print("event")
 			if(event.EventThread != None):
+				print(f"  checking thread id {event.EventThread.id}")
 				if(event.EventThread.id == thread.id):
 					return event
 		return None

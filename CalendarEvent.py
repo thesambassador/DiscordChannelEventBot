@@ -124,7 +124,7 @@ class CalendarEvent():
 				self.MaybeList.remove(user)
 
 		if(user not in toUse):
-			#print("adding")
+			print(f"adding, eventThread is {self.EventThread}")
 			toUse.append(user)
 			if(self.EventThread != None and not self.EventThread.archived):
 				if(self.ThreadMentionMessage != None):
@@ -259,26 +259,27 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 
 		if(messages[0].reference.message_id == message.id):
 			result.EventThread = thread
-			print("Found thread")
+			print(f"Found thread with id {thread.id}")
 			if(len(messages) >= 2):
 				if(DoesStringStartWith(messages[1].content, _threadMentionMessageStart)):
 					result.ThreadMentionMessage = messages[1]
 					print("found thread mention message")
 			break
 	
-	#so now iterate over archived threads too?
-	async for thread in message.channel.archived_threads():
-		messages = await thread.history(limit=2, oldest_first=True).flatten()
-		if(len(messages) == 0): continue
+	#so now iterate over archived threads too if we haven't found the thread?
+	if(result.EventThread == None):
+		async for thread in message.channel.archived_threads():
+			messages = await thread.history(limit=2, oldest_first=True).flatten()
+			if(len(messages) == 0): continue
 
-		if(messages[0].reference.message_id == message.id):
-			result.EventThread = thread
-			print("Found archived thread")
-			if(len(messages) >= 2):
-				if(DoesStringStartWith(messages[1].content, _threadMentionMessageStart)):
-					result.ThreadMentionMessage = messages[1]
-					print("found thread mention message")
-			break
+			if(messages[0].reference.message_id == message.id):
+				result.EventThread = thread
+				print(f"Found archived thread with id {thread.id}")
+				if(len(messages) >= 2):
+					if(DoesStringStartWith(messages[1].content, _threadMentionMessageStart)):
+						result.ThreadMentionMessage = messages[1]
+						print("found thread mention message")
+				break
 	
 	for field in eventEmbed.fields:
 		if(field.name == _fieldHost):
