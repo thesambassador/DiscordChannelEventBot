@@ -12,6 +12,7 @@ from discord.embeds import Embed
 from dateutil.parser import parse
 from discord.errors import Forbidden, HTTPException, NotFound
 from discord.ext import commands
+from datetime import timedelta
 #from GuildCalendar import *
 
 _fieldHost = "Host"
@@ -30,6 +31,7 @@ class CalendarEvent():
 		self.Description = ""
 		self.Host = None
 		self.StartDateTime = None
+		self.IsNew = False
 
 		self.CalendarRef = None
 		self.CreationMessage = None
@@ -197,7 +199,14 @@ class CalendarEvent():
 		eventTime = self.StartDateTime.strftime(" %I:%M %p").replace(" 0", " ")
 		if(includeDate):
 			eventTime = self.StartDateTime.strftime("%A, %B %d at %I:%M %p").replace(" 0", " ")
-		return eventTitle + eventTime
+
+		#if the event was created within the last day, add a new flag
+		newFlag = ""
+		if(self.CreationMessage.created_at <= (datetime.today().date() + timedelta(days=1))):
+			newFlag = " 🆕"
+		
+
+		return eventTitle + eventTime + newFlag
 			
 def GetUserIDsFromRSVPList(rsvpString):
 	result = []

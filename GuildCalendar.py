@@ -257,8 +257,18 @@ class GuildCalendar():
 
 	#note that embed fields seem to have a limit of 1024 characters per field
 	#whole embed might have an overall character limit of 6000
-	async def UpdateSummary(self, numTodayEvents = 10, numWeekEvents = 10, numNewEvents = 3):
+	async def UpdateSummary(self, numTodayEvents = 10, numWeekEvents = 10, numFutureEvents = 10):
 		summaryEmbeds = []
+
+		#new, adding a "new" flag to the top numNewEvents entries (nevermind, just add "new" flag for events created less than 1 full day ago)
+		#clear new flag on all events
+		#for event in self.EventsList:
+		#	event.IsNew = False
+
+		#eventsByCreateDate = sorted(self.EventsList, key=lambda x: x.CreationMessage.created_at)
+		#eventsByCreateDate.reverse()
+		#eventsByCreateDate = eventsByCreateDate[0:numNewEvents]
+
 		
 		#events happening today
 		eventsTodayString = ""
@@ -278,12 +288,20 @@ class GuildCalendar():
 		thisWeekEmbed = self.CreateSummaryEmbedFromList(thisWeekEvents, "Events This Week", numWeekEvents, "No events later this week")
 		summaryEmbeds.append(thisWeekEmbed)
 
-		#newly added events
-		eventsByCreateDate = sorted(self.EventsList, key=lambda x: x.CreationMessage.created_at)
-		eventsByCreateDate.reverse()
+		#events further out than the week
+		futureEvents = [x for x in self.EventsList
+						if x not in thisWeekEvents and
+						x not in todayEvents]
+		futureEvents.sort(key=lambda x: x.StartDateTime, reverse=False)
+
+		futureEventsEmbed = self.CreateSummaryEmbedFromList(futureEvents, "In More Than A Week", numFutureEvents, "None")
+		summaryEmbeds.append(futureEventsEmbed)
 		
-		newlyAddedEmbed = self.CreateSummaryEmbedFromList(eventsByCreateDate, "Newly Created Events", numNewEvents, "No events added so far")
-		summaryEmbeds.append(newlyAddedEmbed)
+
+		
+		
+		#newlyAddedEmbed = self.CreateSummaryEmbedFromList(eventsByCreateDate, "Newly Created Events", numNewEvents, "No events added so far")
+		#summaryEmbeds.append(newlyAddedEmbed)
 
 		#add event usage FAQ link
 		usageEmbed = discord.Embed()
