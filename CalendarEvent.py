@@ -203,7 +203,8 @@ class CalendarEvent():
 
 		#if the event was created within the last day, add a new flag
 		newFlag = ""
-		if(self.CreationMessage.created_at <= (datetime.now() + timedelta(days=1))):
+		neutralTime = self.CreationMessage.created_at.replace(tzinfo=None)
+		if(neutralTime >= (datetime.now() - timedelta(days=1))):
 			newFlag = " 🆕"
 		
 
