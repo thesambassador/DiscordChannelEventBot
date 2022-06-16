@@ -13,6 +13,7 @@ from dateutil.parser import parse
 from discord.errors import Forbidden, HTTPException, NotFound
 from discord.ext import commands
 from datetime import timedelta
+from datetime import datetime
 #from GuildCalendar import *
 
 _fieldHost = "Host"
