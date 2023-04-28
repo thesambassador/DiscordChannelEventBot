@@ -230,6 +230,10 @@ def GetUserIDsFromRSVPList(rsvpString):
 			#new method to have http in there... christ. strip out the http
 			if(idString[0]=="h"):
 				idString = idString[7:]
+
+			#more workarounds, yay! to get links to work properly, i guess they might need a .com at the end, so we gotta strip that out too
+			if(idString[-1]=="m"):
+				idString = idString[0:-4]
 				
 			id = int(idString)
 			result.append(id)
@@ -241,7 +245,8 @@ def GetSanitizedNicknameLink(user : discord.Member):
 	id = user.id
 	
 	santizedNickname = re.sub('[\[\]\(\)]', '', nickname)
-	return f"[{santizedNickname}](http://{id})"
+	#now we have to add a .com to potentially make the user links show up. oof i hate this.
+	return f"[{santizedNickname}](http://{id}.com)"
 
  #constructor from event message (when re-initializing events from messages)
 async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarEvent:
