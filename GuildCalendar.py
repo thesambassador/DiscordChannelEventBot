@@ -1,7 +1,7 @@
 from hashlib import new
 
 from dateutil.parser import ParserError
-from discord.components import C
+#from discord.components import C
 from discord.enums import ChannelType, MessageType
 from discord.threads import Thread
 from GoogleCalendarHelper import GoogleCalendarHelper
@@ -55,7 +55,8 @@ class GuildCalendar():
 		print(f"finding events channel for guild {self.Guild.name}")
 		self.EventsChannel = next((x for x in self.Guild.channels if x.name == eventChannelName))
 		print(f'got events channel {self.EventsChannel.name}, getting messages')
-		messages = await self.EventsChannel.history(limit=200).flatten()
+		#messages = await self.EventsChannel.history(limit=200).flatten()  I guess flatten might  not work any more?
+		messages = [message async for message in self.EventsChannel.history(limit=200)]
 
 		print(f"finding archive channel for guild {self.Guild.name}")
 		self.ArchiveChannel = next((x for x in self.Guild.channels if x.name == archiveChannelName))
@@ -314,7 +315,7 @@ class GuildCalendar():
 
 		#check if the summary is currently the LAST message in the channel. 
 		#if yes, just edit that message
-		messages = await self.EventsChannel.history(limit=1, oldest_first=False).flatten()
+		messages = [message async for message in self.EventsChannel.history(limit=1, oldest_first=False)]
 		lastMessage = messages[0]
 		if(GuildCalendar.IsSummaryMessage(lastMessage)):
 			print("summary is last, just editting")

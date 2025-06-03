@@ -7,11 +7,17 @@ from GuildCalendar import CreateCalendarForGuild
 from discord.ext import commands
 from discord.ext.commands.core import command
 from discord.ext import tasks
+import traceback
+import sys
 
 class EventsCog(commands.Cog):
     def __init__(self, bot) :
         self.bot = bot
         self.GuildCalDict = {}
+        
+
+    async def cog_load(self):
+        print("cog loaded, starting archive loop")
         self.ArchiveOld.start()
 
 
@@ -63,6 +69,7 @@ class EventsCog(commands.Cog):
 
         
 
+
     @commands.Cog.listener()
     async def on_ready(self):
         print("Event bot connected, starting up...")
@@ -95,6 +102,12 @@ class EventsCog(commands.Cog):
         #print(str(payload.emoji))
     
     @commands.Cog.listener()
+    async def on_command_error(self, ctx, error):
+        # All other Errors not returned come here. And we can just print the default TraceBack.
+        print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+
+    @commands.Cog.listener()
     async def on_thread_join(self, thread:Thread):
         if(thread.guild.id in self.GuildCalDict.keys()):
             await self.GuildCalDict[thread.guild.id].HandleThreadJoined(thread)
@@ -125,7 +138,7 @@ class EventsCog(commands.Cog):
 
     
 
-def setup(bot):
-    bot.add_cog(EventsCog(bot))
+async def setup(bot):
+    await bot.add_cog(EventsCog(bot))
 
     

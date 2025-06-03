@@ -270,7 +270,7 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 	
 	#note that message.channel.threads seems to only return unarchived threads
 	for thread in message.channel.threads:
-		messages = await thread.history(limit=2, oldest_first=True).flatten()
+		messages = [message async for message in thread.history(limit=2, oldest_first=True)]
 		if(len(messages) == 0): continue
 
 		if(messages[0].reference.message_id == message.id):
@@ -285,7 +285,7 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 	#so now iterate over archived threads too if we haven't found the thread?
 	if(result.EventThread == None):
 		async for thread in message.channel.archived_threads():
-			messages = await thread.history(limit=2, oldest_first=True).flatten()
+			messages = [message async for message in thread.history(limit=2, oldest_first=True)]
 			if(len(messages) == 0): continue
 
 			if(messages[0].reference.message_id == message.id):
