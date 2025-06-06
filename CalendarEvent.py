@@ -51,7 +51,9 @@ class CalendarEvent():
 		return self.StartDateTime.__gt__(other.StartDateTime) #probably should just use lt and reverse
 
 	def CreateEmbed(self) -> Embed:
-		result = discord.Embed(title = self.Title, description = self.Description, url = self.CreationMessage.jump_url)
+		#old method uses creation message to track changes, we don't need any more
+		#result = discord.Embed(title = self.Title, description = self.Description, url = self.CreationMessage.jump_url)
+		result = discord.Embed(title = self.Title, description = self.Description)
 		result.add_field(name=_fieldHost, value = GetSanitizedNicknameLink(self.Host))
 		result.add_field(name=_fieldStartTime, value = self.StartDateTime.strftime("%A, %B %d at %I:%M %p").replace(" 0", " ")) #gross python. GROSS.
 
@@ -67,6 +69,12 @@ class CalendarEvent():
 
 		return result
 	
+	async def EditEvent(self, interaction : discord.Interaction, title : str, date : str, starttime : str, description : str):
+		self.Title = title
+		self.Description = description
+		self.StartDateTime = GetDateTimeFromStrings(date, starttime)
+		await interaction.response.edit_message(embed=self.CreateEmbed())
+
 	async def UpdateMessage(self, msgString):
 		noCommandMessage = msgString[7:] #remove the command part of the message (the !event part)
 		
@@ -114,7 +122,8 @@ class CalendarEvent():
 		message = f"Event thread created for {self.Title} {mentionList}"
 		return message
 
-	async def AddRSVP(self, user, isMaybe=False):
+	async def AddRSVP(self, interaction : discord.Interaction, isMaybe=False):
+		user = interaction.user
 		toUse = self.RSVPList
 		if(isMaybe):
 			toUse = self.MaybeList
@@ -126,6 +135,7 @@ class CalendarEvent():
 			if(user in self.MaybeList):
 				self.MaybeList.remove(user)
 
+		#only update if the user isn't already in the rsvp list
 		if(user not in toUse):
 			print(f"adding, eventThread is {self.EventThread}")
 			toUse.append(user)
@@ -141,10 +151,11 @@ class CalendarEvent():
 					await self.EventThread.add_user(user)
 
 
-			await self.UpdateEmbed()
+		await interaction.response.edit_message(embed=self.CreateEmbed())
 		
 
-	async def RemoveRSVP(self, user):
+	async def RemoveRSVP(self, interaction : discord.Interaction):
+		user = interaction.user
 		removed = False
 		if(user in self.RSVPList):
 			self.RSVPList.remove(user)
@@ -154,10 +165,12 @@ class CalendarEvent():
 			self.MaybeList.remove(user)
 			removed = True
 
-		if(removed):
-			if(self.EventThread != None and not self.EventThread.archived):
-				await self.EventThread.remove_user(user)
-			await self.UpdateEmbed()
+		#you can't remove a user without an annoying "bot removed user from thread" message
+		#soooo not going to do this any more, users can manually leave threads if they want to
+		# if(removed):
+		# 	if(self.EventThread != None and not self.EventThread.archived):
+		# 		await self.EventThread.remove_user(user)
+		await interaction.response.edit_message(embed=self.CreateEmbed())
 
 	async def UpdateThreadMentionMessage(self):
 		if(self.EventThread != None and not self.EventThread.archived):
@@ -201,11 +214,12 @@ class CalendarEvent():
 		if(includeDate):
 			eventTime = self.StartDateTime.strftime("%A, %B %d at %I:%M %p").replace(" 0", " ")
 
+		#TODO, add tracking to creation time for new events, right now just commenting to get stuff working
 		#if the event was created within the last day, add a new flag
 		newFlag = ""
-		neutralTime = self.CreationMessage.created_at.replace(tzinfo=None)
-		if(neutralTime >= (datetime.now() - timedelta(days=1))):
-			newFlag = " 🆕"
+		# neutralTime = self.CreationMessage.created_at.replace(tzinfo=None)
+		# if(neutralTime >= (datetime.now() - timedelta(days=1))):
+		# 	newFlag = " 🆕"
 		
 
 		return eventTitle + eventTime + newFlag
@@ -259,7 +273,7 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 
 	result.Title = eventEmbed.title
 	result.Description = eventEmbed.description
-	result.CreationMessage = await GetMessageFromURL(eventEmbed.url, message.guild)
+	#result.CreationMessage = await GetMessageFromURL(eventEmbed.url, message.guild) no longer doing this
 	result.EventMessage = message
 	result.RSVPList = []
 
@@ -306,6 +320,7 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 				#mention text, when in string form, looks like "<@#####>", so we need to strip out the brackets and @ to get the id itself
 			else:
 				#should just be 1 value
+				#TODO CHECK THIS CODE... seems wrong?
 				hostIDList = GetUserIDsFromRSVPList(hostName)
 				hostID = hostIDList[0]
 				result.Host = await calendar.Guild.fetch_member(hostID)
@@ -350,8 +365,8 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 
 	return result
 
-#constructor from command (when creating events from a command)
-async def CreateEventFromCommand(calendar, ctx, commandText):
+#constructor from command (when creating events from a text command, the OLD WAY)
+def CreateEventFromCommand(calendar, ctx, commandText):
 	result = CalendarEvent()
 
 	result.CalendarRef = calendar #ref to containing calendar
@@ -377,9 +392,30 @@ async def CreateEventFromCommand(calendar, ctx, commandText):
 		result.StartDateTime = parseResult[0]
 		result.Title = parseResult[1][0]
 		result.Description = commandText
-
-	await result.AddRSVP(ctx.author)
+	result.RSVPList.append(ctx.author)
+	
+	#removing await on this function cuz we don't need it
+	#await result.AddRSVP(ctx.author)
 	return result
+
+def CreateEventFromSlashCommand(calendar, ctx : discord.Interaction, title : str, date : str, startTime : str, description : str):
+	result = CalendarEvent()
+	result.CalendarRef = calendar #ref to containing calendar
+	result.EventMessage = None #will be filled in once it's actually posted to the server
+
+	#result.CreationMessage = ctx.message NOT NEEDED FOR SLASH COMMAND, don't need to remember the creation message any more
+	result.Host = ctx.user
+	result.RSVPList = [ctx.user] #new list with just the author in it
+
+	result.Title = title
+	result.Description = description
+	result.StartDateTime = GetDateTimeFromStrings(date, startTime)
+	return result
+
+
+
+async def CreateEvent():
+	pass
 
 async def GetUserFromMention(mention, guild):
 	#print(f"mention: {mention}")
@@ -397,6 +433,12 @@ async def GetUserFromMention(mention, guild):
 		return None
 	except HTTPException:
 		return None
+
+def GetDateTimeFromStrings(dateString : str, timeString : str):
+	date = parse(dateString, fuzzy=True)
+	time = parse(timeString, fuzzy=True).time()
+	return datetime.combine(date,time)
+
 
 def GetUserIDFromMention(mention):
 	try:

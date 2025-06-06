@@ -14,6 +14,10 @@ import sys
 import traceback
 from datetime import datetime
 from datetime import timedelta
+import EventBotViews
+from EventBotViews import EventViewActive
+from EventBotViews import EventModal
+from EventBotViews import DeleteModal
 
 class GuildCalendar():
 	Emoji_Yes = '\u2705'
@@ -86,12 +90,74 @@ class GuildCalendar():
 		#lambda arguments don't get formed until they execute, so creating local vars in lambda scope is necessary
 		self.TaskQueue.put_nowait(lambda ctx=ctx, args=args: self.NewEventCommand(ctx,args) ) 
 
+	async def HandleNewEventSlashCommand(self, interaction : discord.Interaction, title : str, date : str, starttime : str, description : str):
+		#try to create the new event from the command
+		try:
+			newEvent : CalendarEvent = CreateEventFromSlashCommand(self, interaction, title, date, starttime, description)
+			print(newEvent.StartDateTime)
+			if(newEvent.StartDateTime < datetime.now()):
+				print("date is in past")
+				await interaction.response.send_message("The date you put was in the past, re-check the date and try again. On PC, hitting the up arrow should re-populate the slash command with what you put in!", ephemeral=True)
+				await self.PostResponseMessage(newEvent, 3)
+			else:
+				#if we were successful in parsing the command into an event, post it to the events channel
+				await self.AddEvent(newEvent, True)
+				response = f"[New Event - {newEvent.Title}]({newEvent.EventMessage.jump_url})"
+				await interaction.response.send_message(response)
+
+		except ParserError:
+
+			await interaction.response.send_message("Something went wrong when parsing the date, check the input and try again. On PC, hitting the up arrow should re-populate the slash command with what you put in!", ephemeral=True)
+	
+	#for handling the event response drop down options
+	async def HandleEventDropDownInteraction(self, interaction : discord.Interaction, selectedValue):
+		reactedEvent = self.GetEventFromEventMessage(interaction.message.id)
+		isAdmin = interaction.permissions.send_messages
+		isHost = interaction.user == reactedEvent.Host
+		canEdit = isAdmin or isHost
+
+		if(selectedValue == EventBotViews.stringGoing):
+			await reactedEvent.AddRSVP(interaction)
+			
+		elif(selectedValue == EventBotViews.stringMaybe):
+			await reactedEvent.AddRSVP(interaction, True)
+			
+		elif(selectedValue == EventBotViews.stringNo):
+			await reactedEvent.RemoveRSVP(interaction)
+
+		elif(selectedValue == EventBotViews.stringEdit):
+			if(canEdit):
+				await interaction.response.send_modal(EventModal(reactedEvent))
+			else:
+				await interaction.response.send_message("You are not the creator of the event, so you cannot edit it", ephemeral=True)
+		elif(selectedValue == EventBotViews.stringDelete):
+			if(canEdit):
+				await interaction.response.send_modal(DeleteModal(reactedEvent))
+			else:
+				await interaction.response.send_message("You are not the creator of the event, so you cannot delete it", ephemeral=True)
+		else:
+			await interaction.response.defer()
+
+	#for handling when they hit the "submit" button on the edit event modal
+	async def HandleEditEventSubmit(self, interaction : discord.Interaction, title : str, date : str, starttime : str, description : str):
+		event = self.GetEventFromEventMessage(interaction.message.id)
+		await event.EditEvent(interaction, title, date, starttime, description)
+		
+
+	#this should only happen once they've already typed in delete, so just do it
+	async def HandleDeleteEventSubmit(self, interaction : discord.Interaction):
+		event = self.GetEventFromEventMessage(interaction.message.id)
+		await self.DeleteEvent(event)
+		await interaction.response.send_message("Event deleted", ephemeral=True, delete_after=30)
+
+
+	#OLD METHOD NOT USED
 	async def NewEventCommand(self, ctx, args):
 		print("new event!")
 		errorMessage = ""
 		#try to create the new event from the command
 		try:
-			newEvent : CalendarEvent = await CreateEventFromCommand(self, ctx, args)
+			newEvent : CalendarEvent = CreateEventFromCommand(self, ctx, args)
 			print(newEvent.StartDateTime)
 			if(newEvent.StartDateTime < datetime.now()):
 				print("date is in past")
@@ -99,6 +165,7 @@ class GuildCalendar():
 			else:
 				#if we were successful in parsing the command into an event, post it to the events channel
 				await self.AddEvent(newEvent, True)
+				
 				await self.PostResponseMessage(newEvent)
 
 		except ParserError:
@@ -112,24 +179,26 @@ class GuildCalendar():
 		# 	await self.PostResponseMessage(nullEvent, 1)
 
 	async def PostResponseMessage(self, calEvent : CalendarEvent, errorCode = 0):
-		createMessage : discord.Message = calEvent.CreationMessage
-		createChannel : TextChannel = createMessage.channel
-		#no error
-		if(errorCode == 0):
-			responseMessage = f"[Successfully created your event, click here to see it in the events channel]({calEvent.EventMessage.jump_url})"
-			responseEmbed = discord.Embed(description = responseMessage)
-			await createChannel.send(embed=responseEmbed, reference=createMessage, delete_after=120)
+		pass
+		#TODO this whole thing is gross and i'll fix it properly lol
+		# createMessage : discord.Message = calEvent.CreationMessage
+		# createChannel : TextChannel = createMessage.channel
+		# #no error
+		# if(errorCode == 0):
+		# 	responseMessage = f"[Successfully created your event, click here to see it in the events channel]({calEvent.EventMessage.jump_url})"
+		# 	responseEmbed = discord.Embed(description = responseMessage)
+		# 	await createChannel.send(embed=responseEmbed, reference=createMessage, delete_after=120)
 
-		elif(errorCode == 1):
-			errorMessage = "Something went wrong when parsing your message, try again?"
-			await createChannel.send(content=errorMessage, reference=createMessage, delete_after=120)
-		elif(errorCode == 2):
-			errorMessage = "Couldn't determine a date for your event, make sure that your event has a date and time in it"
-			await createChannel.send(content=errorMessage, reference=createMessage, delete_after=120)
-		elif(errorCode == 3):
-			dateString = calEvent.StartDateTime.strftime("%A, %B %d at %I:%M %p").replace(" 0", " ")
-			errorMessage = f"Looks like your selected date, {dateString}, might be in the past? Unfortunately, nobody on this server can time travel, try again"
-			await createChannel.send(content=errorMessage, reference=createMessage, delete_after=120)
+		# elif(errorCode == 1):
+		# 	errorMessage = "Something went wrong when parsing your message, try again?"
+		# 	await createChannel.send(content=errorMessage, reference=createMessage, delete_after=120)
+		# elif(errorCode == 2):
+		# 	errorMessage = "Couldn't determine a date for your event, make sure that your event has a date and time in it"
+		# 	await createChannel.send(content=errorMessage, reference=None, delete_after=120)
+		# elif(errorCode == 3):
+		# 	dateString = calEvent.StartDateTime.strftime("%A, %B %d at %I:%M %p").replace(" 0", " ")
+		# 	errorMessage = f"Looks like your selected date, {dateString}, might be in the past? Unfortunately, nobody on this server can time travel, try again"
+		# 	await createChannel.send(content=errorMessage, reference=createMessage, delete_after=120)
 
 	async def HandleMessageEdit(self, payload):
 		self.TaskQueue.put_nowait(lambda payload=payload: self.MessageEdit(payload))
@@ -202,7 +271,7 @@ class GuildCalendar():
 	async def DeleteEvent(self, event : CalendarEvent):
 		await event.EventMessage.delete()
 		self.EventsList.remove(event)
-		self.EventsDict.pop(event.CreationMessage.id)
+		#self.EventsDict.pop(event.CreationMessage.id) NO LONGER NEEDED
 
 		#delete google calendar thing
 		if(event.GCalendarData != None):
@@ -218,7 +287,7 @@ class GuildCalendar():
 		#add to the events list sorted, and the events dictionary
 		index = bisect.bisect(self.EventsList, newEvent)
 		self.EventsList.insert(index, newEvent)
-		self.EventsDict[newEvent.CreationMessage.id] = newEvent
+		#self.EventsDict[newEvent.CreationMessage.id] = newEvent NO LONGER NEEDED
 
 		#update the LastEventsCreated array
 		#TODO handle the lasteventscreated stuff
@@ -248,10 +317,10 @@ class GuildCalendar():
 				self.EventsList[-1].EventMessage = newMessage
 			else:
 				newEmbed = newEvent.CreateEmbed()
-				newMessage = await self.EventsChannel.send(embed=newEmbed)
-				await self.AddReactions(newMessage)
+				newMessage = await self.EventsChannel.send(embed=newEmbed, view = EventViewActive())
+				#await self.AddReactions(newMessage) no longer need to add reactions
 				newEvent.EventMessage = newMessage
-
+			await newEvent.CreateThreadForEvent()
 			await(self.UpdateSummary())
 
 		
@@ -316,10 +385,10 @@ class GuildCalendar():
 		#check if the summary is currently the LAST message in the channel. 
 		#if yes, just edit that message
 		messages = [message async for message in self.EventsChannel.history(limit=1, oldest_first=False)]
-		lastMessage = messages[0]
-		if(GuildCalendar.IsSummaryMessage(lastMessage)):
+
+		if(len(messages) > 0 and GuildCalendar.IsSummaryMessage(messages[0])):
 			print("summary is last, just editting")
-			self.SummaryMessage = lastMessage
+			self.SummaryMessage = messages[0]
 			await self.SummaryMessage.edit(embeds=summaryEmbeds)
 
 		#if no, delete that message and re-post
@@ -427,7 +496,7 @@ class GuildCalendar():
 
 			return False
 
-	def GetEventFromEventMessage(self, messageID):
+	def GetEventFromEventMessage(self, messageID) -> CalendarEvent:
 		for event in self.EventsList:
 			if(event.EventMessage != None and event.EventMessage.id == messageID):
 				return event
@@ -468,7 +537,7 @@ class GuildCalendar():
 			oldEvent.IsArchived = True
 
 			self.EventsList.remove(oldEvent)
-			self.EventsDict.pop(oldEvent.CreationMessage.id)
+			#self.EventsDict.pop(oldEvent.CreationMessage.id)
 
 			self.ArchivedEventsList.append(oldEvent)
 

@@ -44,6 +44,7 @@ class GoogleCalendarHelper():
         self.calendarID = self.GetCalendarIDForGuild(guildID)
         self.calendarActive = True
         if(self.calendarID == None):
+            print(f"CALENDAR NOT ACTIVE FOR GUILD {guildID}")
             self.calendarActive = False
         self.timeZone = os.getenv('GOOGLE_CALENDAR_TIMEZONE', 'America/Chicago')
 
@@ -122,4 +123,5 @@ class GoogleCalendarHelper():
             except:
                 continue
         calIDLookup.close()
+        return None
 
