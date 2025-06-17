@@ -1,11 +1,12 @@
 from hashlib import new
-
+from SamDiscordUtilities import *
 from dateutil.parser import ParserError
 #from discord.components import C
 from discord.enums import ChannelType, MessageType
 from discord.threads import Thread
 from GoogleCalendarHelper import GoogleCalendarHelper
 from discord import message
+import discord
 from CalendarEvent import *
 import asyncio
 import discord
@@ -36,7 +37,8 @@ class GuildCalendar():
 		self.EventsChannel = None
 		self.ArchiveChannel = None
 
-		self.SummaryMessage = None
+		self.EventsMention : discord.Role = None #the role that this calendar should use when new events are created
+		self.SummaryMessage : discord.Message = None
 		self.LastArchiveDateTime : datetime.datetime = datetime.now()
 		self.GCalHelper = GoogleCalendarHelper(guild.id)
 
@@ -72,6 +74,13 @@ class GuildCalendar():
 			if(GuildCalendar.IsEventMessage(message)):
 				try:
 					newEvent = await CreateEventFromMessage(self, message)
+					#if the event message has reactions, it's in the "old" format and we need to update
+					if(len(message.reactions) > 0):
+						print("Old style event, gotta update")
+						await message.edit(view = EventViewActive())
+						await message.clear_reactions()
+
+					
 					#since we already have the event in the channel, we don't need to do any posting
 					await self.AddEvent(newEvent, False)
 				except NotFound:
@@ -79,36 +88,53 @@ class GuildCalendar():
 					toRemove.append(message)
 			elif(GuildCalendar.IsSummaryMessage(message)):
 				print("found summary message")
+				#check for the role mention in the last embed of the summary
+				numEmbeds = len(message.embeds)
+				print(f"Found {numEmbeds} embeds")
+				lastEmbed = message.embeds[numEmbeds-1]
+				roleMentions = get_role_mentions_in_string(lastEmbed.description, message.guild)
+				if(len(roleMentions) > 0):
+					print(f"got role {roleMentions[0]}")
+					self.EventsMention = roleMentions[0]
+				
 				self.SummaryMessage = message
+				
+
 				
 		for msg in toRemove:
 			await msg.delete()
 
 		await self.UpdateSummary()
-
+	
+	#old non-slash commmand method
 	async def HandleNewEventCommand(self, ctx, args):
 		#lambda arguments don't get formed until they execute, so creating local vars in lambda scope is necessary
 		self.TaskQueue.put_nowait(lambda ctx=ctx, args=args: self.NewEventCommand(ctx,args) ) 
 
+	#new slash command method
 	async def HandleNewEventSlashCommand(self, interaction : discord.Interaction, title : str, date : str, starttime : str, description : str):
+		await interaction.response.defer()
+		self.TaskQueue.put_nowait(lambda i=interaction: self.NewEventSlashCommand(i, title, date, starttime, description))
+	
+	async def NewEventSlashCommand(self, interaction : discord.Interaction, title : str, date : str, starttime : str, description : str):
 		#try to create the new event from the command
 		try:
 			newEvent : CalendarEvent = CreateEventFromSlashCommand(self, interaction, title, date, starttime, description)
 			print(newEvent.StartDateTime)
 			if(newEvent.StartDateTime < datetime.now()):
 				print("date is in past")
-				await interaction.response.send_message("The date you put was in the past, re-check the date and try again. On PC, hitting the up arrow should re-populate the slash command with what you put in!", ephemeral=True)
+				await interaction.followup.send(content="The date you put was in the past, re-check the date and try again. On PC, hitting the up arrow should re-populate the slash command with what you put in!", ephemeral=True)
 				await self.PostResponseMessage(newEvent, 3)
 			else:
 				#if we were successful in parsing the command into an event, post it to the events channel
 				await self.AddEvent(newEvent, True)
 				response = f"[New Event - {newEvent.Title}]({newEvent.EventMessage.jump_url})"
-				await interaction.response.send_message(response)
+				await interaction.followup.send(content=response)
 
 		except ParserError:
+			await interaction.followup.send(content="Something went wrong when parsing the date, check the input and try again. On PC, hitting the up arrow should re-populate the slash command with what you put in!", ephemeral=True)
 
-			await interaction.response.send_message("Something went wrong when parsing the date, check the input and try again. On PC, hitting the up arrow should re-populate the slash command with what you put in!", ephemeral=True)
-	
+
 	#for handling the event response drop down options
 	async def HandleEventDropDownInteraction(self, interaction : discord.Interaction, selectedValue):
 		reactedEvent = self.GetEventFromEventMessage(interaction.message.id)
@@ -199,6 +225,10 @@ class GuildCalendar():
 		# 	dateString = calEvent.StartDateTime.strftime("%A, %B %d at %I:%M %p").replace(" 0", " ")
 		# 	errorMessage = f"Looks like your selected date, {dateString}, might be in the past? Unfortunately, nobody on this server can time travel, try again"
 		# 	await createChannel.send(content=errorMessage, reference=createMessage, delete_after=120)
+
+	async def HandleSetupCommand(self, interaction : discord.Interaction, eventMention : discord.Role):
+		self.EventsMention = eventMention
+		await interaction.response.send_message("Set settings", ephemeral=True)
 
 	async def HandleMessageEdit(self, payload):
 		self.TaskQueue.put_nowait(lambda payload=payload: self.MessageEdit(payload))
@@ -317,11 +347,15 @@ class GuildCalendar():
 				self.EventsList[-1].EventMessage = newMessage
 			else:
 				newEmbed = newEvent.CreateEmbed()
-				newMessage = await self.EventsChannel.send(embed=newEmbed, view = EventViewActive())
+				content = ""
+				if(self.EventsMention != None):
+					content = self.EventsMention.mention
+				newMessage = await self.EventsChannel.send(content=content, embed=newEmbed, view = EventViewActive())
 				#await self.AddReactions(newMessage) no longer need to add reactions
 				newEvent.EventMessage = newMessage
-			await newEvent.CreateThreadForEvent()
-			await(self.UpdateSummary())
+				await newEvent.CreateThreadForEvent()
+				await(self.UpdateSummary())
+			
 
 		
 
@@ -329,16 +363,6 @@ class GuildCalendar():
 	#whole embed might have an overall character limit of 6000
 	async def UpdateSummary(self, numTodayEvents = 10, numWeekEvents = 10, numFutureEvents = 10):
 		summaryEmbeds = []
-
-		#new, adding a "new" flag to the top numNewEvents entries (nevermind, just add "new" flag for events created less than 1 full day ago)
-		#clear new flag on all events
-		#for event in self.EventsList:
-		#	event.IsNew = False
-
-		#eventsByCreateDate = sorted(self.EventsList, key=lambda x: x.CreationMessage.created_at)
-		#eventsByCreateDate.reverse()
-		#eventsByCreateDate = eventsByCreateDate[0:numNewEvents]
-
 		
 		#events happening today
 		eventsTodayString = ""
@@ -376,7 +400,9 @@ class GuildCalendar():
 		#add event usage FAQ link
 		usageEmbed = discord.Embed()
 		description = "[Click here to find out how to use this channel!](https://github.com/thesambassador/DiscordChannelEventBot/wiki/User-Usage)\n"
-		description += "Problems or suggestions? Message <@116783246599127044>"
+		description += f"Problems or suggestions? Message <@116783246599127044>\n"
+		if(self.EventsMention != None):
+			description += f"Get the {self.EventsMention.mention} role from the Channels & Roles to get notified on new events!"
 		usageEmbed.description = description
 		
 
@@ -561,7 +587,7 @@ class GuildCalendar():
 		
 		if(message.embeds[0].title != sumString):
 			return False
-		print("found summary string")
+
 		return True
 
 	#figure out if the message fits the format for an "event" message

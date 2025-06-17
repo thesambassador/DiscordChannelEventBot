@@ -28,10 +28,20 @@ class EventsCog(commands.Cog):
 
 
     @app_commands.command(name="event")
+    @app_commands.describe(title="Give a descriptive title to the event",
+    date="Date in the format mm/dd, such as '6/10'",
+    starttime="Time event starts, such as '6:30pm'",
+    description="Full details about the event")
     async def event(self, interaction: discord.Interaction, title : str, date : str, starttime : str, description : str):
         await self.GuildCalDict[interaction.guild.id].HandleNewEventSlashCommand(interaction, title, date, starttime, description)
         #await interaction.response.send_message(f"EVENT: {title}, {date}", ephemeral=False, view=EventView())
     
+    #for specifying some server-specific config stuff maybe for later
+    @app_commands.command(name="setup")
+    async def setup(self, interaction: discord.Interaction, eventmention : discord.Role):
+        if(interaction.permissions.administrator):
+            await self.GuildCalDict[interaction.guild.id].HandleSetupCommand(interaction, eventmention)
+
     #for when an option in the event responses drop down is selected
     async def on_drop_down_selected(self, interaction : discord.Interaction, selectedValue):
         await self.GuildCalDict[interaction.guild.id].HandleEventDropDownInteraction(interaction, selectedValue)

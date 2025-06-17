@@ -32,7 +32,8 @@ class CalendarEvent():
 		self.Description = ""
 		self.Host = None
 		self.StartDateTime = None
-		self.IsNew = False
+		
+		#self.IsNew = False NOT USED ANY MORE
 
 		self.CalendarRef = None
 		self.CreationMessage = None
@@ -61,7 +62,7 @@ class CalendarEvent():
 		linksText = f"[{_subFieldCal}]({self.GCalendarLink})\n"
 		if(self.EventThread != None):
 			textChannelLink = GetLinkToChannel(self.EventThread)
-			linksText += f"[{_subFieldChannel}]({textChannelLink})"
+			#linksText += f"[{_subFieldChannel}]({textChannelLink})"
 
 		result.add_field(name=_fieldLinks, value = linksText)
 		result.add_field(name=f"{_fieldRSVP} ({len(self.RSVPList)})", value = self.GetMentionList(self.RSVPList), inline=True)
@@ -217,9 +218,10 @@ class CalendarEvent():
 		#TODO, add tracking to creation time for new events, right now just commenting to get stuff working
 		#if the event was created within the last day, add a new flag
 		newFlag = ""
-		# neutralTime = self.CreationMessage.created_at.replace(tzinfo=None)
-		# if(neutralTime >= (datetime.now() - timedelta(days=1))):
-		# 	newFlag = " 🆕"
+		if(self.EventMessage != None):
+			neutralTime = self.EventMessage.created_at.replace(tzinfo=None)
+			if(neutralTime >= (datetime.now() - timedelta(days=1))):
+				newFlag = " 🆕"
 		
 
 		return eventTitle + eventTime + newFlag
@@ -286,6 +288,7 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 	for thread in message.channel.threads:
 		messages = [message async for message in thread.history(limit=2, oldest_first=True)]
 		if(len(messages) == 0): continue
+		if(messages[0].reference == None): continue
 
 		if(messages[0].reference.message_id == message.id):
 			result.EventThread = thread

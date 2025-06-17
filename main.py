@@ -13,6 +13,7 @@ SERVER = os.getenv('DISCORD_SERVER')
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 
 class EventClient(commands.Bot):
     def __init__(self):
@@ -21,8 +22,8 @@ class EventClient(commands.Bot):
     async def setup_hook(self) -> None:
         self.add_view(EventViewActive())
         await self.load_extension("cogs.EventsCog")
-        synced = await self.tree.sync()
-        print(f"synced {len(synced)} commands")
+        #synced = await self.tree.sync()
+        #print(f"synced {len(synced)} commands")
         
 
 bot = EventClient()
