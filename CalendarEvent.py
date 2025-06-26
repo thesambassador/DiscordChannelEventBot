@@ -281,38 +281,55 @@ async def CreateEventFromMessage(calendar, message:discord.Message) -> CalendarE
 
 	print(f"Reading event {result.Title}")
 	#see if the message has a thread and save it
+
+	#now seems like there's a much easier way to get the thread
+	thread : Thread = None
+	try:
+		thread = await message.fetch_thread()
+		result.EventThread = thread
+		print("thread found")
+		messages = [msg async for msg in thread.history(limit=2, oldest_first=True)]
+		if(len(messages) >= 2):
+			result.ThreadMentionMessage = messages[1]
+			print("mention message found")
+
+	except discord.NotFound:
+		print("no thread found")
+	except:
+		print("something else went wrong getting the thread")
+
 	#seems like right now, the only way to get the thread is to look at ALL the threads
 	#and check the referenced messageid on the first message in that thread
 	
 	#note that message.channel.threads seems to only return unarchived threads
-	for thread in message.channel.threads:
-		messages = [message async for message in thread.history(limit=2, oldest_first=True)]
-		if(len(messages) == 0): continue
-		if(messages[0].reference == None): continue
+	# for thread in message.channel.threads:
+	# 	messages = [message async for message in thread.history(limit=2, oldest_first=True)]
+	# 	if(len(messages) == 0): continue
+	# 	if(messages[0].reference == None): continue
 
-		if(messages[0].reference.message_id == message.id):
-			result.EventThread = thread
-			print(f"Found thread with id {thread.id}")
-			if(len(messages) >= 2):
-				if(DoesStringStartWith(messages[1].content, _threadMentionMessageStart)):
-					result.ThreadMentionMessage = messages[1]
-					print("found thread mention message")
-			break
+	# 	if(messages[0].reference.message_id == message.id):
+	# 		result.EventThread = thread
+	# 		print(f"Found thread with id {thread.id}")
+	# 		if(len(messages) >= 2):
+	# 			if(DoesStringStartWith(messages[1].content, _threadMentionMessageStart)):
+	# 				result.ThreadMentionMessage = messages[1]
+	# 				print("found thread mention message")
+	# 		break
 	
-	#so now iterate over archived threads too if we haven't found the thread?
-	if(result.EventThread == None):
-		async for thread in message.channel.archived_threads():
-			messages = [message async for message in thread.history(limit=2, oldest_first=True)]
-			if(len(messages) == 0): continue
+	# #so now iterate over archived threads too if we haven't found the thread?
+	# if(result.EventThread == None):
+	# 	async for thread in message.channel.archived_threads():
+	# 		messages = [message async for message in thread.history(limit=2, oldest_first=True)]
+	# 		if(len(messages) == 0): continue
 
-			if(messages[0].reference.message_id == message.id):
-				result.EventThread = thread
-				print(f"Found archived thread with id {thread.id}")
-				if(len(messages) >= 2):
-					if(DoesStringStartWith(messages[1].content, _threadMentionMessageStart)):
-						result.ThreadMentionMessage = messages[1]
-						print("found thread mention message")
-				break
+	# 		if(messages[0].reference.message_id == message.id):
+	# 			result.EventThread = thread
+	# 			print(f"Found archived thread with id {thread.id}")
+	# 			if(len(messages) >= 2):
+	# 				if(DoesStringStartWith(messages[1].content, _threadMentionMessageStart)):
+	# 					result.ThreadMentionMessage = messages[1]
+	# 					print("found thread mention message")
+	# 			break
 	
 	for field in eventEmbed.fields:
 		if(field.name == _fieldHost):

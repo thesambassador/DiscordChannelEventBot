@@ -80,6 +80,8 @@ class GuildCalendar():
 						await message.edit(view = EventViewActive())
 						await message.clear_reactions()
 
+					#going to tell it to just create the thread here for all of them to fix the events that didn't get threads
+					await newEvent.CreateThreadForEvent()
 					
 					#since we already have the event in the channel, we don't need to do any posting
 					await self.AddEvent(newEvent, False)
